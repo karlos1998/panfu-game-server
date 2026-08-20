@@ -37,6 +37,7 @@ public final class PlayerSession {
     private volatile long lastActionAt;
     private volatile String lastAction = "";
     private volatile AvatarSnapshot avatarSnapshot;
+    private volatile AvatarUpdateSnapshot avatarUpdateSnapshot;
 
     public PlayerSession(ClientConnection connection, PacketCodec codec) {
         this.connection = Objects.requireNonNull(connection);
@@ -135,6 +136,19 @@ public final class PlayerSession {
                 .writeString(playerInfo(snapshot.clothes()));
     }
 
+    public OutgoingPacket updateAvatarPacket() {
+        AvatarUpdateSnapshot snapshot = avatarUpdateSnapshot;
+        if (snapshot == null) {
+            return null;
+        }
+        return OutgoingPacket.header(PacketHeaders.PLAYER_TO_PLAYER_RESPONSE)
+                .writeInt(playerId)
+                .writeInt(P2pHeaders.UPDATE_AVATAR)
+                .writeString(snapshot.pet())
+                .writeInt(sheriff)
+                .writeString(playerInfo(snapshot.playerString()));
+    }
+
     public String playerString() {
         return "%d:%d:%d:%s:%d:%d:0".formatted(playerId, x, y, username, status, rotation);
     }
@@ -149,6 +163,12 @@ public final class PlayerSession {
                 rotation,
                 sanitize(petType, ';', '|'),
                 sanitize(clothes, ';', '|'));
+    }
+
+    public synchronized void updateAvatar(String pet, String playerString) {
+        this.avatarUpdateSnapshot = new AvatarUpdateSnapshot(
+                sanitize(pet, ';', '|'),
+                sanitize(playerString, ';', '|'));
     }
 
     public String playerInfo(String clothes) {
@@ -204,4 +224,6 @@ public final class PlayerSession {
     public void lastAction(String value) { this.lastAction = value; }
 
     public record AvatarSnapshot(int x, int y, String action, int rotation, String petType, String clothes) {}
+
+    public record AvatarUpdateSnapshot(String pet, String playerString) {}
 }
