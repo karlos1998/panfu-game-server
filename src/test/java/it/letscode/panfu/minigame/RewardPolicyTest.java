@@ -26,6 +26,12 @@ class RewardPolicyTest {
 
         assertThat(policy.calculate(1_000, started, started.plusSeconds(10), settings)).isEqualTo(50);
         assertThat(policy.calculate(99_999, started, started.plusSeconds(10), settings)).isEqualTo(200);
+        assertThat(policy.calculate(
+                        270,
+                        started,
+                        started.plusSeconds(10),
+                        new RewardSettings(true, new BigDecimal("0.0500"), null)))
+                .isEqualTo(13);
     }
 
     @Test

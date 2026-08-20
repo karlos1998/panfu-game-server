@@ -26,11 +26,11 @@ public class JdbcRewardLedgerRepository implements RewardLedgerRepository {
                         """)
                 .param("gameId", gameId)
                 .query((resultSet, row) -> {
-                    int maximum = resultSet.getInt("max_coins_per_round");
+                    Integer maximum = resultSet.getObject("max_coins_per_round", Integer.class);
                     return new RewardSettings(
                             resultSet.getBoolean("enabled"),
                             resultSet.getBigDecimal("coin_multiplier"),
-                            resultSet.wasNull() ? null : maximum);
+                            maximum);
                 })
                 .optional()
                 .orElse(DEFAULTS);

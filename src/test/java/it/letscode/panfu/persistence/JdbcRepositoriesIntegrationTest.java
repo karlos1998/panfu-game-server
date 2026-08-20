@@ -77,6 +77,10 @@ class JdbcRepositoriesIntegrationTest {
                 INSERT INTO minigame_rewards (game_id, enabled, coin_multiplier, max_coins_per_round)
                 VALUES (5, true, 0.1000, 50)
                 """);
+        template.update("""
+                INSERT INTO minigame_rewards (game_id, enabled, coin_multiplier, max_coins_per_round)
+                VALUES (11, true, 0.0500, NULL)
+                """);
     }
 
     @AfterAll
@@ -110,6 +114,7 @@ class JdbcRepositoriesIntegrationTest {
         UUID roundId = UUID.randomUUID();
 
         assertThat(rewards.settingsFor(5).coinMultiplier()).isEqualByComparingTo(new BigDecimal("0.1000"));
+        assertThat(rewards.settingsFor(11).maxCoinsPerRound()).isNull();
         assertThat(rewards.awardOnce(roundId, 7, 5, 500, 50)).isEqualTo(50);
         assertThat(rewards.awardOnce(roundId, 7, 5, 500, 50)).isZero();
         assertThat(jdbc.sql("SELECT coins FROM users WHERE id = 7").query(Integer.class).single()).isEqualTo(60);
