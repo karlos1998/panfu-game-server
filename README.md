@@ -40,17 +40,17 @@ Important environment variables:
 | `HTTP_PORT` | HTTP/WebSocket port | `9596` |
 | `LEGACY_TCP_PORT` | legacy TCP port | `9595` |
 | `LEGACY_TCP_ENABLED` | enable legacy TCP | `true` |
-| `SERVER_AWARDS_ENABLED` | enable server-side minigame coin awards | `false` |
+| `SERVER_AWARDS_ENABLED` | enable server-side minigame coin awards | `true` |
 | `INTERNAL_API_SECRET` | shared Laravel HMAC secret | development-only value |
 | `ALLOWED_ORIGINS` | comma-separated browser origins | localhost only |
 
 Production deployments must provide a unique, randomly generated `INTERNAL_API_SECRET`, HTTPS/WSS
 at the edge, restricted management-port access and the exact public origins.
 
-Legacy Panfu SWFs currently calculate game-specific coin payouts and persist the resulting balance
-through Laravel AMF. `SERVER_AWARDS_ENABLED` therefore remains disabled to prevent double payouts.
-It may be enabled only after the affected games use a trusted, correlated server-side start/finish
-flow and have verified per-game reward policies.
+Legacy Panfu SWFs send `JOIN_GAME` and `QUIT_GAME` packets through the game-server connection.
+The server correlates the generated round, validates its duration and score, applies the configured
+per-game multiplier, persists the claim once and sends the awarded coin delta back to the client.
+`SERVER_AWARDS_ENABLED` is an emergency switch for disabling these payouts without rebuilding.
 
 ## Internal API
 

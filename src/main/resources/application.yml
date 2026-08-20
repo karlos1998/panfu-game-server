@@ -49,9 +49,8 @@ panfu:
       login-timeout: 30s
       idle-timeout: 5m
     rewards:
-      # Legacy SWFs currently report their own per-game payouts through Laravel AMF.
-      # Enable only after a game has a trusted, correlated server-side round policy.
-      server-awards-enabled: ${SERVER_AWARDS_ENABLED:false}
+      # Emergency switch; normal legacy games use correlated JOIN_GAME/QUIT_GAME rounds.
+      server-awards-enabled: ${SERVER_AWARDS_ENABLED:true}
       minimum-round-duration: 2s
       max-score-per-round: 100000
       max-coins-per-round: 500
