@@ -127,10 +127,10 @@ public final class PlayerSession {
         return OutgoingPacket.header(PacketHeaders.PLAYER_TO_PLAYER_RESPONSE)
                 .writeInt(playerId)
                 .writeInt(P2pHeaders.CREATE_AVATAR)
-                .writeInt(snapshot.x())
-                .writeInt(snapshot.y())
+                .writeInt(x)
+                .writeInt(y)
                 .writeString(snapshot.action())
-                .writeInt(snapshot.rotation())
+                .writeInt(rotation)
                 .writeString(snapshot.petType())
                 .writeInt(sheriff)
                 .writeString(playerInfo(snapshot.clothes()));
@@ -150,7 +150,8 @@ public final class PlayerSession {
     }
 
     public String playerString() {
-        return "%d:%d:%d:%s:%d:%d:0".formatted(playerId, x, y, username, status, rotation);
+        // The Flash client expects special-entry, status and direction in that order.
+        return "%d:%d:%d:%s:0:%d:%d".formatted(playerId, x, y, username, status, rotation);
     }
 
     public synchronized void storeAvatar(int x, int y, String action, int rotation, String petType, String clothes) {

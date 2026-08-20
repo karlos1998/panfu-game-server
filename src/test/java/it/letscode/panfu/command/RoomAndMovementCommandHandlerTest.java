@@ -41,6 +41,33 @@ class RoomAndMovementCommandHandlerTest {
     }
 
     @Test
+    void lateJoinSnapshotKeepsCurrentPositionAndMapsStatusSeparatelyFromRotation() {
+        SessionRegistry registry = new SessionRegistry();
+        AudienceService audience = new AudienceService(registry);
+        RoomCommandHandler rooms = new RoomCommandHandler(registry, audience);
+        MovementCommandHandler movement = new MovementCommandHandler(audience);
+        RecordingConnection existingConnection = new RecordingConnection("existing");
+        RecordingConnection joiningConnection = new RecordingConnection("joining");
+        PlayerSession existing = authenticated(existingConnection, 1, "Existing");
+        PlayerSession joining = authenticated(joiningConnection, 2, "Joining");
+        existing.joinRoom(10, 100, 100);
+        existing.storeAvatar(100, 100, "sit", 1, "", "1001");
+        joining.joinRoom(10, 200, 200);
+        registry.register(existing);
+        registry.register(joining);
+
+        movement.handle(new IncomingPacket(PacketHeaders.MOVE, List.of("320", "410", "0")), existing);
+        movement.handle(new IncomingPacket(PacketHeaders.ROTATE, List.of("6")), existing);
+        movement.handle(new IncomingPacket(PacketHeaders.SET_PLAYER_STATUS, List.of("3")), existing);
+        rooms.handle(new IncomingPacket(PacketHeaders.GET_ROOM_ATTENDEES, List.of()), joining);
+
+        assertThat(joiningConnection.messages())
+                .contains("70;10;1:320:410:Existing:0:3:6;2:200:200:Joining:0:0:0|")
+                .contains("30;10;1;320;410;Existing|")
+                .contains("113;1;10;320;410;sit;6;;0;Existing,1001|");
+    }
+
+    @Test
     void rejectsOutOfRangeMovementWithoutBroadcastingIt() {
         SessionRegistry registry = new SessionRegistry();
         RecordingConnection connection = new RecordingConnection("player");
