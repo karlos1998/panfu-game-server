@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.Duration;
 import java.util.List;
@@ -22,23 +23,23 @@ public record GameServerProperties(
 
     public record Network(
             @NotBlank String websocketPath,
-            @Min(1) @Max(65535) int legacyTcpPort,
+            @Min(0) @Max(65535) int legacyTcpPort,
             boolean legacyTcpEnabled) {}
 
     public record Security(
             @NotEmpty List<@NotBlank String> allowedOrigins,
             @NotBlank String internalApiSecret,
-            @Positive Duration internalRequestTtl) {}
+            @NotNull Duration internalRequestTtl) {}
 
     public record Limits(
             @Positive int maxFrameBytes,
             @Positive int maxPacketParameters,
             @Positive int maxConnectionsPerIp,
-            @Positive Duration loginTimeout,
-            @Positive Duration idleTimeout) {}
+            @NotNull Duration loginTimeout,
+            @NotNull Duration idleTimeout) {}
 
     public record Rewards(
-            @Positive Duration minimumRoundDuration,
+            @NotNull Duration minimumRoundDuration,
             @Positive int maxScorePerRound,
             @Positive int maxCoinsPerRound) {}
 }
