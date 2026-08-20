@@ -36,7 +36,7 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-junit-jupiter:2.0.5")
     testImplementation("org.testcontainers:testcontainers-mysql:2.0.5")
     testImplementation("net.jqwik:jqwik:1.9.3")
-    testImplementation("com.tngtech.archunit:archunit-junit5:1.4.1")
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.5.0")
     testImplementation("org.awaitility:awaitility")
     testImplementation("io.projectreactor:reactor-test")
 }
