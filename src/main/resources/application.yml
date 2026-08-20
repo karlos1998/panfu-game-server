@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: panfu-game-server
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/panfu?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:sail}
+    password: ${DB_PASSWORD:password}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: 1
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+server:
+  port: ${HTTP_PORT:9596}
+  shutdown: graceful
+  max-http-request-header-size: 16KB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+panfu:
+  game-server:
+    server-id: ${GAME_SERVER_ID:1}
+    network:
+      websocket-path: /game
+      legacy-tcp-port: ${LEGACY_TCP_PORT:9595}
+      legacy-tcp-enabled: ${LEGACY_TCP_ENABLED:true}
+    security:
+      allowed-origins: ${ALLOWED_ORIGINS:http://localhost,http://127.0.0.1}
+      internal-api-secret: ${INTERNAL_API_SECRET:local-development-secret-change-me}
+      internal-request-ttl: 30s
+    limits:
+      max-frame-bytes: 8192
+      max-packet-parameters: 64
+      max-connections-per-ip: 20
+      login-timeout: 30s
+      idle-timeout: 5m
+    rewards:
+      minimum-round-duration: 2s
+      max-score-per-round: 100000
+      max-coins-per-round: 500
