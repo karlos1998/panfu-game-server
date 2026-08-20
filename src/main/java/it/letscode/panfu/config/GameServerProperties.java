@@ -39,6 +39,7 @@ public record GameServerProperties(
             @NotNull Duration idleTimeout) {}
 
     public record Rewards(
+            boolean serverAwardsEnabled,
             @NotNull Duration minimumRoundDuration,
             @Positive int maxScorePerRound,
             @Positive int maxCoinsPerRound) {}

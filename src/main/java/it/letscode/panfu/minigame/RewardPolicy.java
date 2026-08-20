@@ -17,6 +17,10 @@ public final class RewardPolicy {
         this.limits = properties.rewards();
     }
 
+    public boolean serverAwardsEnabled() {
+        return limits.serverAwardsEnabled();
+    }
+
     public int calculate(int score, Instant startedAt, Instant finishedAt, RewardSettings settings) {
         if (!settings.enabled()
                 || score <= 0

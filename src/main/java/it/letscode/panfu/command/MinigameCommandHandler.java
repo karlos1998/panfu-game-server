@@ -66,7 +66,9 @@ public final class MinigameCommandHandler implements CommandHandler {
     private void quitGame(PacketReader reader, PlayerSession session) {
         int gameId = reader.readInt();
         int score = reader.readInt();
-        if (session.currentGame() == gameId && session.currentRound() != null) {
+        if (session.currentGame() == gameId
+                && session.currentRound() != null
+                && rewards.serverAwardsEnabled()) {
             UUID roundId = session.currentRound();
             RewardSettings settings = ledger.settingsFor(gameId);
             int coins = rewards.calculate(score, session.roundStartedAt(), Instant.now(), settings);

@@ -17,7 +17,7 @@ class SessionRegistryTest {
             new GameServerProperties.Network("/game", 9595, true),
             new GameServerProperties.Security(List.of("http://localhost"), "secret", Duration.ofSeconds(30)),
             new GameServerProperties.Limits(1000, 16, 10, Duration.ofSeconds(30), Duration.ofMinutes(5)),
-            new GameServerProperties.Rewards(Duration.ofSeconds(2), 1000, 100)));
+            new GameServerProperties.Rewards(true, Duration.ofSeconds(2), 1000, 100)));
 
     @Test
     void rejectsDuplicateLoginWithoutReplacingExistingSession() {

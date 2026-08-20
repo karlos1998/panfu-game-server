@@ -15,7 +15,7 @@ class PacketCodecTest {
             new GameServerProperties.Network("/game", 9595, true),
             new GameServerProperties.Security(List.of("http://localhost"), "secret", Duration.ofSeconds(30)),
             new GameServerProperties.Limits(1000, 8, 10, Duration.ofSeconds(30), Duration.ofMinutes(5)),
-            new GameServerProperties.Rewards(Duration.ofSeconds(2), 100000, 500)));
+            new GameServerProperties.Rewards(true, Duration.ofSeconds(2), 100000, 500)));
 
     @Test
     void decodesAllFramesAndPreservesEmptyParameters() {

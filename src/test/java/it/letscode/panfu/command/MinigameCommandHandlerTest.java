@@ -31,6 +31,7 @@ class MinigameCommandHandlerTest {
         RewardPolicy policy = mock(RewardPolicy.class);
         RewardLedgerRepository ledger = mock(RewardLedgerRepository.class);
         RewardSettings settings = new RewardSettings(true, BigDecimal.ONE, 100);
+        when(policy.serverAwardsEnabled()).thenReturn(true);
         when(ledger.settingsFor(7)).thenReturn(settings);
         when(policy.calculate(org.mockito.ArgumentMatchers.eq(200), any(Instant.class), any(Instant.class),
                 org.mockito.ArgumentMatchers.eq(settings))).thenReturn(42);
@@ -47,6 +48,26 @@ class MinigameCommandHandlerTest {
 
         verify(ledger).awardOnce(roundId, 5, 7, 200, 42);
         assertThat(connection.messages()).containsExactly("35;42|", "10;12|");
+        assertThat(player.currentRound()).isNull();
+    }
+
+    @Test
+    void doesNotDoubleAwardLegacyClientRewardsWhenServerAwardsAreDisabled() {
+        SessionRegistry registry = new SessionRegistry();
+        MultiplayerService multiplayer = new MultiplayerService(registry);
+        RewardPolicy policy = mock(RewardPolicy.class);
+        RewardLedgerRepository ledger = mock(RewardLedgerRepository.class);
+        RecordingConnection connection = new RecordingConnection("player");
+        PlayerSession player = authenticated(connection, 5, "Player");
+        player.joinRoom(12, 0, 0);
+        player.startGame(7);
+
+        new MinigameCommandHandler(multiplayer, policy, ledger).handle(
+                new IncomingPacket(PacketHeaders.QUIT_GAME, List.of("7", "200")), player);
+
+        verify(policy).serverAwardsEnabled();
+        org.mockito.Mockito.verifyNoInteractions(ledger);
+        assertThat(connection.messages()).containsExactly("10;12|");
         assertThat(player.currentRound()).isNull();
     }
 

@@ -16,7 +16,7 @@ class ConnectionLimiterTest {
                 new GameServerProperties.Network("/game", 9595, true),
                 new GameServerProperties.Security(List.of("http://localhost"), "secret", Duration.ofSeconds(30)),
                 new GameServerProperties.Limits(100, 10, 2, Duration.ofSeconds(30), Duration.ofMinutes(5)),
-                new GameServerProperties.Rewards(Duration.ofSeconds(2), 100, 10)));
+                new GameServerProperties.Rewards(true, Duration.ofSeconds(2), 100, 10)));
 
         assertThat(limiter.acquire("127.0.0.1")).isTrue();
         assertThat(limiter.acquire("127.0.0.1")).isTrue();
