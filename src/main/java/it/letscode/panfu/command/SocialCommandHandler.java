@@ -145,7 +145,6 @@ public final class SocialCommandHandler implements CommandHandler {
         OutgoingPacket sharedItemAction = session.sharedItemActionPacket();
         if (sharedItemAction != null) {
             audience.receiver(session, receiver, sharedItemAction);
-            return;
         }
         audience.receiver(session, receiver, OutgoingPacket.header(PacketHeaders.PLAYER_TO_PLAYER_RESPONSE)
                 .writeInt(session.playerId())

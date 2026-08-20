@@ -99,7 +99,8 @@ class ChatAndSocialCommandHandlerTest {
 
         assertThat(joiningConnection.messages()).containsExactly(
                 "113;1;12;241;335;sit;down_right;355|",
-                "113;1;12;241;335;sit;down_right;355|");
+                "113;1;12;241;335;sit;down_right;355|",
+                "113;1;21;sit|");
         assertThat(seated.x()).isEqualTo(241);
         assertThat(seated.y()).isEqualTo(335);
         assertThat(outsideConnection.messages()).isEmpty();
