@@ -256,9 +256,20 @@ public final class PlayerSession {
     public void status(int value) { this.status = value; }
     public int interactingWith() { return interactingWith; }
     public synchronized void interactingWith(int value) {
+        int previous = this.interactingWith;
         this.interactingWith = value;
         if (value < 0) {
             this.sharedItemAction = null;
+            if (previous >= 0 && "sit".equals(this.lastAction)) {
+                this.lastAction = "";
+            }
+        }
+    }
+    public synchronized void clearSeatedState() {
+        this.interactingWith = -1;
+        this.sharedItemAction = null;
+        if ("sit".equals(this.lastAction)) {
+            this.lastAction = "";
         }
     }
     public int currentGame() { return currentGame; }

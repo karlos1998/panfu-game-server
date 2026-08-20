@@ -143,6 +143,9 @@ public final class SocialCommandHandler implements CommandHandler {
             return;
         }
         OutgoingPacket sharedItemAction = session.sharedItemActionPacket();
+        if (sharedItemAction == null && !"sit".equals(session.lastAction())) {
+            return;
+        }
         if (sharedItemAction != null) {
             audience.receiver(session, receiver, sharedItemAction);
         }

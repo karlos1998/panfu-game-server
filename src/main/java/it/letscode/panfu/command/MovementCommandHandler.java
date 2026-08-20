@@ -58,7 +58,7 @@ public final class MovementCommandHandler implements CommandHandler {
         }
         session.x(toX);
         session.y(toY);
-        session.interactingWith(-1);
+        session.clearSeatedState();
         int duration = type == 0 ? walkingDuration(fromX, fromY, toX, toY) : 1000;
         audience.room(session, OutgoingPacket.header(PacketHeaders.AVATAR_MOVED)
                 .writeInt(session.playerId())

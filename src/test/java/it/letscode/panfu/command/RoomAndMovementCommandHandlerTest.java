@@ -51,7 +51,7 @@ class RoomAndMovementCommandHandlerTest {
         PlayerSession existing = authenticated(existingConnection, 1, "Existing");
         PlayerSession joining = authenticated(joiningConnection, 2, "Joining");
         existing.joinRoom(10, 100, 100);
-        existing.storeAvatar(100, 100, "sit", 1, "", "1001");
+        existing.storeAvatar(100, 100, "", 1, "", "1001");
         joining.joinRoom(10, 200, 200);
         registry.register(existing);
         registry.register(joining);
@@ -66,7 +66,7 @@ class RoomAndMovementCommandHandlerTest {
         assertThat(joiningConnection.messages())
                 .contains("70;10;1:241:335:Existing:0:3:6;2:200:200:Joining:0:0:0|")
                 .contains("30;10;1;241;335;Existing|")
-                .contains("113;1;10;241;335;sit;6;;0;Existing,1001|")
+                .contains("113;1;10;241;335;;6;;0;Existing,1001|")
                 .contains("113;1;14;Shopping;|")
                 .contains("113;1;12;241;335;sit;down_right;355|");
     }
@@ -94,6 +94,7 @@ class RoomAndMovementCommandHandlerTest {
         player.joinRoom(1, 241, 335);
         player.interactingWith(0);
         player.storeSharedItemAction(241, 335, "sit", "down_right", 355);
+        player.lastAction("sit");
         registry.register(player);
 
         new MovementCommandHandler(new AudienceService(registry)).handle(
@@ -101,5 +102,6 @@ class RoomAndMovementCommandHandlerTest {
 
         assertThat(player.interactingWith()).isEqualTo(-1);
         assertThat(player.sharedItemActionPacket()).isNull();
+        assertThat(player.lastAction()).isEmpty();
     }
 }

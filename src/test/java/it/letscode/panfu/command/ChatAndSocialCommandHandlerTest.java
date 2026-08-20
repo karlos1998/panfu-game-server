@@ -105,4 +105,52 @@ class ChatAndSocialCommandHandlerTest {
         assertThat(seated.y()).isEqualTo(335);
         assertThat(outsideConnection.messages()).isEmpty();
     }
+
+    @Test
+    void ignoresTheClientsStaleSitReplayAfterThePlayerHasMoved() {
+        SessionRegistry registry = new SessionRegistry();
+        AudienceService audience = new AudienceService(registry);
+        RecordingConnection seatedConnection = new RecordingConnection("seated");
+        RecordingConnection joiningConnection = new RecordingConnection("joining");
+        PlayerSession seated = authenticated(seatedConnection, 1, "Seated");
+        PlayerSession joining = authenticated(joiningConnection, 2, "Joining");
+        seated.joinRoom(5, 241, 335);
+        joining.joinRoom(5, 200, 200);
+        seated.interactingWith(0);
+        seated.storeSharedItemAction(241, 335, "sit", "down_right", 355);
+        seated.lastAction("sit");
+        registry.register(seated);
+        registry.register(joining);
+
+        new MovementCommandHandler(audience).handle(
+                new IncomingPacket(PacketHeaders.MOVE, List.of("500", "400", "0")), seated);
+        new SocialCommandHandler(registry, audience).handle(new IncomingPacket(
+                PacketHeaders.PLAYER_TO_PLAYER,
+                List.of("2", Integer.toString(P2pHeaders.REPLAY_AVATAR_ACTION), "sit")), seated);
+
+        assertThat(joiningConnection.messages())
+                .containsExactly("20;1;2670;500;400;0|")
+                .noneMatch(message -> message.startsWith("113;1;21;"));
+    }
+
+    @Test
+    void stillReplaysAnActiveManualSitActionWithoutABench() {
+        SessionRegistry registry = new SessionRegistry();
+        AudienceService audience = new AudienceService(registry);
+        RecordingConnection seatedConnection = new RecordingConnection("seated");
+        RecordingConnection joiningConnection = new RecordingConnection("joining");
+        PlayerSession seated = authenticated(seatedConnection, 1, "Seated");
+        PlayerSession joining = authenticated(joiningConnection, 2, "Joining");
+        seated.joinRoom(5, 100, 100);
+        joining.joinRoom(5, 200, 200);
+        seated.lastAction("sit");
+        registry.register(seated);
+        registry.register(joining);
+
+        new SocialCommandHandler(registry, audience).handle(new IncomingPacket(
+                PacketHeaders.PLAYER_TO_PLAYER,
+                List.of("2", Integer.toString(P2pHeaders.REPLAY_AVATAR_ACTION), "sit")), seated);
+
+        assertThat(joiningConnection.messages()).containsExactly("113;1;21;sit|");
+    }
 }
