@@ -3,9 +3,9 @@ FROM gradle:9.6.1-jdk21 AS build
 WORKDIR /workspace
 COPY gradle gradle
 COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts gradle.properties ./
-RUN ./gradlew --no-daemon dependencies
+RUN gradle --no-daemon --no-configuration-cache dependencies
 COPY src src
-RUN ./gradlew --no-daemon clean bootJar
+RUN gradle --no-daemon --no-configuration-cache clean bootJar
 
 FROM eclipse-temurin:21-jre
 
