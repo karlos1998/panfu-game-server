@@ -57,6 +57,7 @@ public final class SocialCommandHandler implements CommandHandler {
             case P2pHeaders.SHOW_STATUS -> showStatus(reader, receiver, session);
             case P2pHeaders.HIDE_STATUS -> hideStatus(reader, receiver, session);
             case P2pHeaders.USE_SHARED_ITEM -> useSharedItem(reader, receiver, session);
+            case P2pHeaders.REPLAY_AVATAR_ACTION -> replayAvatarAction(reader, receiver, session);
             default -> {
                 // Unknown P2P command is ignored for legacy compatibility.
             }
@@ -111,6 +112,39 @@ public final class SocialCommandHandler implements CommandHandler {
             session.send(response);
         }
         audience.receiver(session, receiver, response);
+    }
+
+    private void replayAvatarAction(PacketReader reader, String receiver, PlayerSession session) {
+        // The Flash client only uses this command to restore an already seated
+        // avatar for one player who has just entered the room.
+        if (!isPlayerInCurrentRoom(receiver, session)) {
+            return;
+        }
+        String action = limited(reader.readString(), 80);
+        if (!"sit".equals(action)) {
+            return;
+        }
+        audience.receiver(session, receiver, OutgoingPacket.header(PacketHeaders.PLAYER_TO_PLAYER_RESPONSE)
+                .writeInt(session.playerId())
+                .writeInt(P2pHeaders.REPLAY_AVATAR_ACTION)
+                .writeString(action));
+    }
+
+    private boolean isPlayerInCurrentRoom(String receiver, PlayerSession session) {
+        if (session.roomId() < 0) {
+            return false;
+        }
+        try {
+            int receiverId = Integer.parseInt(receiver);
+            return receiverId != session.playerId()
+                    && sessions.find(receiverId)
+                            .filter(target -> target.roomId() == session.roomId()
+                                    && target.home() == session.home()
+                                    && target.subRoom() == session.subRoom())
+                            .isPresent();
+        } catch (NumberFormatException exception) {
+            return false;
+        }
     }
 
     private String normalizeReceiver(String receiver, PlayerSession session) {

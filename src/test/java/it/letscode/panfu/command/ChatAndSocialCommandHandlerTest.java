@@ -63,4 +63,36 @@ class ChatAndSocialCommandHandlerTest {
         assertThat(roomConnection.messages()).containsExactly("113;1;14;Online;Hello|");
         assertThat(outsideConnection.messages()).isEmpty();
     }
+
+    @Test
+    void replaysSitOnlyToTheJoiningPlayerInTheSameRoom() {
+        SessionRegistry registry = new SessionRegistry();
+        AudienceService audience = new AudienceService(registry);
+        RecordingConnection seatedConnection = new RecordingConnection("seated");
+        RecordingConnection joiningConnection = new RecordingConnection("joining");
+        RecordingConnection outsideConnection = new RecordingConnection("outside");
+        PlayerSession seated = authenticated(seatedConnection, 1, "Seated");
+        PlayerSession joining = authenticated(joiningConnection, 2, "Joining");
+        PlayerSession outside = authenticated(outsideConnection, 3, "Outside");
+        seated.joinRoom(5, 100, 100);
+        joining.joinRoom(5, 200, 200);
+        outside.joinRoom(6, 300, 300);
+        registry.register(seated);
+        registry.register(joining);
+        registry.register(outside);
+        SocialCommandHandler handler = new SocialCommandHandler(registry, audience);
+
+        handler.handle(new IncomingPacket(
+                PacketHeaders.PLAYER_TO_PLAYER,
+                List.of("2", Integer.toString(P2pHeaders.REPLAY_AVATAR_ACTION), "sit")), seated);
+        handler.handle(new IncomingPacket(
+                PacketHeaders.PLAYER_TO_PLAYER,
+                List.of("3", Integer.toString(P2pHeaders.REPLAY_AVATAR_ACTION), "sit")), seated);
+        handler.handle(new IncomingPacket(
+                PacketHeaders.PLAYER_TO_PLAYER,
+                List.of("2", Integer.toString(P2pHeaders.REPLAY_AVATAR_ACTION), "dance")), seated);
+
+        assertThat(joiningConnection.messages()).containsExactly("113;1;21;sit|");
+        assertThat(outsideConnection.messages()).isEmpty();
+    }
 }

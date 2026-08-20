@@ -35,7 +35,7 @@ public final class MovementCommandHandler implements CommandHandler {
             case PacketHeaders.MOVE -> move(packet.parameters().size(), reader, session);
             case PacketHeaders.FORCE_COORDINATES -> forceCoordinates(reader, session);
             case PacketHeaders.ROTATE -> session.rotation(clamp(reader.readInt(), 0, 360));
-            case PacketHeaders.SET_PLAYER_STATUS -> session.status(clamp(reader.readInt(), 0, 10_000));
+            case PacketHeaders.SET_PLAYER_STATUS -> session.status(clamp(reader.readInt(), 0, 6));
             default -> throw new IllegalArgumentException("Unsupported movement command");
         }
     }

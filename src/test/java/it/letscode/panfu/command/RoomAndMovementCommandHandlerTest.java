@@ -64,7 +64,8 @@ class RoomAndMovementCommandHandlerTest {
         assertThat(joiningConnection.messages())
                 .contains("70;10;1:320:410:Existing:0:3:6;2:200:200:Joining:0:0:0|")
                 .contains("30;10;1;320;410;Existing|")
-                .contains("113;1;10;320;410;sit;6;;0;Existing,1001|");
+                .contains("113;1;10;320;410;sit;6;;0;Existing,1001|")
+                .contains("113;1;14;Shopping;|");
     }
 
     @Test

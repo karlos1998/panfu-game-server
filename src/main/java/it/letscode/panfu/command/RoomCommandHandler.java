@@ -121,6 +121,10 @@ public final class RoomCommandHandler implements CommandHandler {
             if (update != null) {
                 session.send(update);
             }
+            OutgoingPacket status = player.activeStatusPacket();
+            if (status != null) {
+                session.send(status);
+            }
         });
         audience.roomExceptSource(session, session.setAvatarPacket());
         session.send(OutgoingPacket.header(PacketHeaders.SAFE_CHAT_TOGGLED).writeInt(0));

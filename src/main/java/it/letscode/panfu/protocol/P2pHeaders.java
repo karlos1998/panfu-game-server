@@ -11,4 +11,5 @@ public final class P2pHeaders {
     public static final int USE_SHARED_ITEM = 12;
     public static final int SHOW_STATUS = 14;
     public static final int HIDE_STATUS = 15;
+    public static final int REPLAY_AVATAR_ACTION = 21;
 }

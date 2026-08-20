@@ -6,10 +6,14 @@ import it.letscode.panfu.protocol.PacketCodec;
 import it.letscode.panfu.protocol.PacketHeaders;
 import it.letscode.panfu.transport.ClientConnection;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
 public final class PlayerSession {
+
+    private static final List<String> PERSISTENT_STATUS_NAMES =
+            List.of("Telescope", "Reading", "Shopping", "Away", "Gaming", "Writing");
 
     private final ClientConnection connection;
     private final PacketCodec codec;
@@ -147,6 +151,18 @@ public final class PlayerSession {
                 .writeString(snapshot.pet())
                 .writeInt(sheriff)
                 .writeString(playerInfo(snapshot.playerString()));
+    }
+
+    public OutgoingPacket activeStatusPacket() {
+        int currentStatus = status;
+        if (currentStatus < 1 || currentStatus > PERSISTENT_STATUS_NAMES.size()) {
+            return null;
+        }
+        return OutgoingPacket.header(PacketHeaders.PLAYER_TO_PLAYER_RESPONSE)
+                .writeInt(playerId)
+                .writeInt(P2pHeaders.SHOW_STATUS)
+                .writeString(PERSISTENT_STATUS_NAMES.get(currentStatus - 1))
+                .writeString("");
     }
 
     public String playerString() {
