@@ -14,6 +14,11 @@ import org.springframework.stereotype.Component;
 @Component
 public final class SocialCommandHandler implements CommandHandler {
 
+    private static final int MAX_COORDINATE = 10_000;
+    private static final int MAX_Z_SORT = 10_000;
+    private static final Set<String> SHARED_ITEM_DIRECTIONS =
+            Set.of("down_right", "left", "left_down", "left_up", "right_up");
+
     private final SessionRegistry sessions;
     private final AudienceService audience;
 
@@ -100,14 +105,27 @@ public final class SocialCommandHandler implements CommandHandler {
     }
 
     private void useSharedItem(PacketReader reader, String receiver, PlayerSession session) {
+        int x = reader.readInt();
+        int y = reader.readInt();
+        String action = limited(reader.readString(), 80);
+        String direction = limited(reader.readString(), 80);
+        int zSort = reader.readInt();
+        if (session.interactingWith() < 0
+                || !validCoordinate(x) || !validCoordinate(y)
+                || !"sit".equals(action)
+                || !SHARED_ITEM_DIRECTIONS.contains(direction)
+                || zSort < 0 || zSort > MAX_Z_SORT) {
+            return;
+        }
+        session.storeSharedItemAction(x, y, action, direction, zSort);
         OutgoingPacket response = OutgoingPacket.header(PacketHeaders.PLAYER_TO_PLAYER_RESPONSE)
                 .writeInt(session.playerId())
                 .writeInt(P2pHeaders.USE_SHARED_ITEM)
-                .writeInt(reader.readInt())
-                .writeInt(reader.readInt())
-                .writeString(limited(reader.readString(), 80))
-                .writeString(limited(reader.readString(), 80))
-                .writeInt(reader.readInt());
+                .writeInt(x)
+                .writeInt(y)
+                .writeString(action)
+                .writeString(direction)
+                .writeInt(zSort);
         if (!receiverIncludesPlayer(receiver, session.playerId())) {
             session.send(response);
         }
@@ -122,6 +140,11 @@ public final class SocialCommandHandler implements CommandHandler {
         }
         String action = limited(reader.readString(), 80);
         if (!"sit".equals(action)) {
+            return;
+        }
+        OutgoingPacket sharedItemAction = session.sharedItemActionPacket();
+        if (sharedItemAction != null) {
+            audience.receiver(session, receiver, sharedItemAction);
             return;
         }
         audience.receiver(session, receiver, OutgoingPacket.header(PacketHeaders.PLAYER_TO_PLAYER_RESPONSE)
@@ -167,6 +190,10 @@ public final class SocialCommandHandler implements CommandHandler {
         } catch (NumberFormatException exception) {
             return false;
         }
+    }
+
+    private boolean validCoordinate(int value) {
+        return value >= -MAX_COORDINATE && value <= MAX_COORDINATE;
     }
 
     private String limited(String value, int limit) {

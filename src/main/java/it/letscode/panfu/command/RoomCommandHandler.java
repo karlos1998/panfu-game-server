@@ -125,6 +125,10 @@ public final class RoomCommandHandler implements CommandHandler {
             if (status != null) {
                 session.send(status);
             }
+            OutgoingPacket sharedItemAction = player.sharedItemActionPacket();
+            if (sharedItemAction != null) {
+                session.send(sharedItemAction);
+            }
         });
         audience.roomExceptSource(session, session.setAvatarPacket());
         session.send(OutgoingPacket.header(PacketHeaders.SAFE_CHAT_TOGGLED).writeInt(0));

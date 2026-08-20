@@ -59,13 +59,16 @@ class RoomAndMovementCommandHandlerTest {
         movement.handle(new IncomingPacket(PacketHeaders.MOVE, List.of("320", "410", "0")), existing);
         movement.handle(new IncomingPacket(PacketHeaders.ROTATE, List.of("6")), existing);
         movement.handle(new IncomingPacket(PacketHeaders.SET_PLAYER_STATUS, List.of("3")), existing);
+        existing.interactingWith(0);
+        existing.storeSharedItemAction(241, 335, "sit", "down_right", 355);
         rooms.handle(new IncomingPacket(PacketHeaders.GET_ROOM_ATTENDEES, List.of()), joining);
 
         assertThat(joiningConnection.messages())
-                .contains("70;10;1:320:410:Existing:0:3:6;2:200:200:Joining:0:0:0|")
-                .contains("30;10;1;320;410;Existing|")
-                .contains("113;1;10;320;410;sit;6;;0;Existing,1001|")
-                .contains("113;1;14;Shopping;|");
+                .contains("70;10;1:241:335:Existing:0:3:6;2:200:200:Joining:0:0:0|")
+                .contains("30;10;1;241;335;Existing|")
+                .contains("113;1;10;241;335;sit;6;;0;Existing,1001|")
+                .contains("113;1;14;Shopping;|")
+                .contains("113;1;12;241;335;sit;down_right;355|");
     }
 
     @Test
@@ -81,5 +84,22 @@ class RoomAndMovementCommandHandlerTest {
 
         assertThat(connection.closed()).isTrue();
         assertThat(connection.messages()).containsExactly("2;Error: CMD_MOVE, invalid movement.|");
+    }
+
+    @Test
+    void movingAwayClearsTheStoredSharedItemAction() {
+        SessionRegistry registry = new SessionRegistry();
+        RecordingConnection connection = new RecordingConnection("player");
+        PlayerSession player = authenticated(connection, 1, "Panda");
+        player.joinRoom(1, 241, 335);
+        player.interactingWith(0);
+        player.storeSharedItemAction(241, 335, "sit", "down_right", 355);
+        registry.register(player);
+
+        new MovementCommandHandler(new AudienceService(registry)).handle(
+                new IncomingPacket(PacketHeaders.MOVE, List.of("260", "350", "0")), player);
+
+        assertThat(player.interactingWith()).isEqualTo(-1);
+        assertThat(player.sharedItemActionPacket()).isNull();
     }
 }

@@ -42,6 +42,7 @@ public final class PlayerSession {
     private volatile String lastAction = "";
     private volatile AvatarSnapshot avatarSnapshot;
     private volatile AvatarUpdateSnapshot avatarUpdateSnapshot;
+    private volatile SharedItemAction sharedItemAction;
 
     public PlayerSession(ClientConnection connection, PacketCodec codec) {
         this.connection = Objects.requireNonNull(connection);
@@ -66,6 +67,7 @@ public final class PlayerSession {
         this.home = false;
         this.subRoom = 0;
         this.interactingWith = -1;
+        this.sharedItemAction = null;
     }
 
     public synchronized void joinHome(int ownerId, int destinationX, int destinationY) {
@@ -75,6 +77,7 @@ public final class PlayerSession {
         this.home = true;
         this.subRoom = 0;
         this.interactingWith = -1;
+        this.sharedItemAction = null;
     }
 
     public synchronized UUID startGame(int gameId) {
@@ -165,6 +168,21 @@ public final class PlayerSession {
                 .writeString("");
     }
 
+    public OutgoingPacket sharedItemActionPacket() {
+        SharedItemAction snapshot = sharedItemAction;
+        if (snapshot == null || interactingWith < 0) {
+            return null;
+        }
+        return OutgoingPacket.header(PacketHeaders.PLAYER_TO_PLAYER_RESPONSE)
+                .writeInt(playerId)
+                .writeInt(P2pHeaders.USE_SHARED_ITEM)
+                .writeInt(snapshot.x())
+                .writeInt(snapshot.y())
+                .writeString(snapshot.action())
+                .writeString(snapshot.direction())
+                .writeInt(snapshot.zSort());
+    }
+
     public String playerString() {
         // The Flash client expects special-entry, status and direction in that order.
         return "%d:%d:%d:%s:0:%d:%d".formatted(playerId, x, y, username, status, rotation);
@@ -186,6 +204,18 @@ public final class PlayerSession {
         this.avatarUpdateSnapshot = new AvatarUpdateSnapshot(
                 sanitize(pet, ';', '|'),
                 sanitize(playerString, ';', '|'));
+    }
+
+    public synchronized void storeSharedItemAction(
+            int actionX, int actionY, String action, String direction, int zSort) {
+        this.x = actionX;
+        this.y = actionY;
+        this.sharedItemAction = new SharedItemAction(
+                actionX,
+                actionY,
+                sanitize(action, ';', '|'),
+                sanitize(direction, ';', '|'),
+                zSort);
     }
 
     public String playerInfo(String clothes) {
@@ -225,7 +255,12 @@ public final class PlayerSession {
     public int status() { return status; }
     public void status(int value) { this.status = value; }
     public int interactingWith() { return interactingWith; }
-    public void interactingWith(int value) { this.interactingWith = value; }
+    public synchronized void interactingWith(int value) {
+        this.interactingWith = value;
+        if (value < 0) {
+            this.sharedItemAction = null;
+        }
+    }
     public int currentGame() { return currentGame; }
     public UUID currentRound() { return currentRound; }
     public Instant roundStartedAt() { return roundStartedAt; }
@@ -243,4 +278,6 @@ public final class PlayerSession {
     public record AvatarSnapshot(int x, int y, String action, int rotation, String petType, String clothes) {}
 
     public record AvatarUpdateSnapshot(String pet, String playerString) {}
+
+    public record SharedItemAction(int x, int y, String action, String direction, int zSort) {}
 }

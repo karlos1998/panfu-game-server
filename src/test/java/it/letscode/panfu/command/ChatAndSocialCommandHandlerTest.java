@@ -65,7 +65,7 @@ class ChatAndSocialCommandHandlerTest {
     }
 
     @Test
-    void replaysSitOnlyToTheJoiningPlayerInTheSameRoom() {
+    void replaysTheCompleteBenchPositionDirectionAndLayerToTheJoiningPlayer() {
         SessionRegistry registry = new SessionRegistry();
         AudienceService audience = new AudienceService(registry);
         RecordingConnection seatedConnection = new RecordingConnection("seated");
@@ -82,6 +82,11 @@ class ChatAndSocialCommandHandlerTest {
         registry.register(outside);
         SocialCommandHandler handler = new SocialCommandHandler(registry, audience);
 
+        seated.interactingWith(0);
+        handler.handle(new IncomingPacket(
+                PacketHeaders.PLAYER_TO_PLAYER,
+                List.of(Integer.toString(P2pHeaders.RECEIVER_ROOM), Integer.toString(P2pHeaders.USE_SHARED_ITEM),
+                        "241", "335", "sit", "down_right", "355")), seated);
         handler.handle(new IncomingPacket(
                 PacketHeaders.PLAYER_TO_PLAYER,
                 List.of("2", Integer.toString(P2pHeaders.REPLAY_AVATAR_ACTION), "sit")), seated);
@@ -92,7 +97,11 @@ class ChatAndSocialCommandHandlerTest {
                 PacketHeaders.PLAYER_TO_PLAYER,
                 List.of("2", Integer.toString(P2pHeaders.REPLAY_AVATAR_ACTION), "dance")), seated);
 
-        assertThat(joiningConnection.messages()).containsExactly("113;1;21;sit|");
+        assertThat(joiningConnection.messages()).containsExactly(
+                "113;1;12;241;335;sit;down_right;355|",
+                "113;1;12;241;335;sit;down_right;355|");
+        assertThat(seated.x()).isEqualTo(241);
+        assertThat(seated.y()).isEqualTo(335);
         assertThat(outsideConnection.messages()).isEmpty();
     }
 }
