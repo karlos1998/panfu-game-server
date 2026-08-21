@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import it.letscode.panfu.persistence.chat.JdbcChatMessageRepository;
 import it.letscode.panfu.persistence.player.JdbcPlayerAccountRepository;
 import it.letscode.panfu.persistence.reward.JdbcRewardLedgerRepository;
 import it.letscode.panfu.persistence.server.JdbcGameServerStatusRepository;
@@ -71,6 +72,17 @@ class JdbcRepositoriesIntegrationTest {
                     updated_at TIMESTAMP NULL
                 )
                 """);
+        template.execute("""
+                CREATE TABLE chat_messages (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    user_id BIGINT NULL,
+                    player_name VARCHAR(255) NOT NULL,
+                    room_id INT UNSIGNED NOT NULL,
+                    is_home BOOLEAN NOT NULL DEFAULT FALSE,
+                    message VARCHAR(120) NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """);
         template.update("INSERT INTO users (id, name, ticket_id, coins) VALUES (7, 'Panda', '123456789', 10)");
         template.update("INSERT INTO gameservers (id, player_count) VALUES (1, 0)");
         template.update("""
@@ -120,5 +132,19 @@ class JdbcRepositoriesIntegrationTest {
         assertThat(jdbc.sql("SELECT coins FROM users WHERE id = 7").query(Integer.class).single()).isEqualTo(60);
         assertThat(jdbc.sql("SELECT COUNT(*) FROM minigame_reward_claims").query(Integer.class).single())
                 .isEqualTo(1);
+    }
+
+    @Test
+    void recordsChatMessageContext() {
+        JdbcChatMessageRepository messages = new JdbcChatMessageRepository(jdbc);
+
+        messages.record(7, "Panda", 13, false, "Hello Castle");
+
+        assertThat(jdbc.sql("""
+                        SELECT CONCAT(user_id, '|', player_name, '|', room_id, '|', is_home, '|', message)
+                        FROM chat_messages
+                        """)
+                .query(String.class)
+                .single()).isEqualTo("7|Panda|13|0|Hello Castle");
     }
 }

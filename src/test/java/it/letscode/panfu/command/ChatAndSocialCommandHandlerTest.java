@@ -10,6 +10,7 @@ import it.letscode.panfu.session.AudienceService;
 import it.letscode.panfu.session.PlayerSession;
 import it.letscode.panfu.session.SessionRegistry;
 import it.letscode.panfu.support.RecordingConnection;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -27,8 +28,10 @@ class ChatAndSocialCommandHandlerTest {
         receiver.joinRoom(5, 0, 0);
         registry.register(sender);
         registry.register(receiver);
+        List<String> recordedMessages = new ArrayList<>();
 
-        new ChatCommandHandler(audience).handle(
+        new ChatCommandHandler(audience, (playerId, playerName, roomId, home, message) ->
+                recordedMessages.add("%d|%s|%d|%s|%s".formatted(playerId, playerName, roomId, home, message))).handle(
                 new IncomingPacket(PacketHeaders.CHAT, List.of("<b>Hello</b>;|")), sender);
         new SocialCommandHandler(registry, audience).handle(
                 new IncomingPacket(PacketHeaders.ADD_BUDDY, List.of("2", "SpoofedName")), sender);
@@ -36,6 +39,7 @@ class ChatAndSocialCommandHandlerTest {
         assertThat(receiverConnection.messages())
                 .contains("40;1;Hello|")
                 .contains("60;1;RealName|");
+        assertThat(recordedMessages).containsExactly("1|RealName|5|false|Hello");
     }
 
     @Test

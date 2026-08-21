@@ -1,5 +1,6 @@
 package it.letscode.panfu.command;
 
+import it.letscode.panfu.persistence.chat.ChatMessageRepository;
 import it.letscode.panfu.protocol.IncomingPacket;
 import it.letscode.panfu.protocol.OutgoingPacket;
 import it.letscode.panfu.protocol.PacketHeaders;
@@ -17,9 +18,11 @@ public final class ChatCommandHandler implements CommandHandler {
     private static final long HARD_FLOOD_MILLIS = 100;
     private static final int MAX_MESSAGE_LENGTH = 120;
     private final AudienceService audience;
+    private final ChatMessageRepository messages;
 
-    public ChatCommandHandler(AudienceService audience) {
+    public ChatCommandHandler(AudienceService audience, ChatMessageRepository messages) {
         this.audience = audience;
+        this.messages = messages;
     }
 
     @Override
@@ -61,13 +64,12 @@ public final class ChatCommandHandler implements CommandHandler {
         if (message.isBlank()) {
             return;
         }
-        if (session.sheriff() > 0) {
-            message = "#FF0000 " + message;
-        }
         session.lastChatAt(now);
+        messages.record(session.playerId(), session.username(), session.roomId(), session.home(), message);
+        String broadcastMessage = session.sheriff() > 0 ? "#FF0000 " + message : message;
         audience.room(session, OutgoingPacket.header(PacketHeaders.CHAT_MESSAGE)
                 .writeInt(session.playerId())
-                .writeString(message));
+                .writeString(broadcastMessage));
     }
 
     private void emote(int emoteId, PlayerSession session) {
