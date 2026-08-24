@@ -73,6 +73,19 @@ class InternalApiControllerTest {
     }
 
     @Test
+    void notifiesOnlyTheOnlinePinboardOwner() {
+        RecordingConnection connection = new RecordingConnection("player");
+        sessions.register(authenticated(connection, 4, "Panda"));
+        var exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/internal/v1/players/4/pinboard-message"));
+
+        var response = controller.pinboardMessage(4, "{}", exchange).block();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(connection.messages()).containsExactly("270|");
+    }
+
+    @Test
     void rejectsAnInvalidSignatureBeforePerformingAnAction() {
         when(verifier.verify(any(), anyString())).thenReturn(Mono.just(false));
         var exchange = MockServerWebExchange.from(MockServerHttpRequest.post("/internal/v1/players/4/kick"));

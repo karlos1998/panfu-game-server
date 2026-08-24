@@ -57,5 +57,6 @@ public final class PacketHeaders {
     public static final int PLAYER_STATUS = 210;
     public static final int PLAYER_IDS_BY_CLOTHES = 212;
     public static final int GAME_SERVER_MESSAGE = 260;
+    public static final int NEW_PINBOARD_MESSAGE = 270;
     public static final int SALT = 301;
 }

@@ -78,6 +78,22 @@ public final class InternalApiController {
         });
     }
 
+    @PostMapping(path = "/players/{playerId}/pinboard-message", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<ResponseEntity<Void>> pinboardMessage(
+            @PathVariable int playerId,
+            @RequestBody(required = false) String body,
+            ServerWebExchange exchange) {
+        String payload = body == null ? "" : body;
+        return authorize(exchange, payload).map(authorized -> {
+            if (!authorized) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+            sessions.find(playerId).ifPresent(session -> session.send(
+                    OutgoingPacket.header(PacketHeaders.NEW_PINBOARD_MESSAGE)));
+            return ResponseEntity.noContent().build();
+        });
+    }
+
     private Mono<Boolean> authorize(ServerWebExchange exchange, String body) {
         return verifier.verify(exchange.getRequest(), body);
     }
