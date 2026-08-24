@@ -42,7 +42,12 @@ class PetRaceProtocolServiceTest {
             appliedResults.incrementAndGet();
             return Optional.of(storedPet.updateAndGet(current -> {
                 PetRaceProgression.Result result = PetRaceProgression.apply(
-                        current, experienceReward, boostUses, java.util.List.of(501));
+                        current,
+                        experienceReward,
+                        boostUses,
+                        current.abilitiesJson().contains("510")
+                                ? java.util.List.of(501, 510)
+                                : java.util.List.of(501));
                 PetRacePet updated = result.pet();
                 return new PetRacePet(
                         updated.id(), updated.ownerId(), updated.type(), updated.name(), updated.selected(),
@@ -156,6 +161,41 @@ class PetRaceProtocolServiceTest {
             assertThat(updated.path("isLevelIncreased").asBoolean()).isTrue();
             assertThat(updated.path("abilities").size()).isEqualTo(2);
         });
+    }
+
+    @Test
+    void appliesAnOwnedRegularSpecialOnlyOnceAndSendsItsAnimationData() throws Exception {
+        storedPet.set(new PetRacePet(77, 11, 2, "Bambus", true, 5, 1, 1, 1, 40, 2, "[501,510]"));
+        protocol.accept("{\"id\":" + ticket + ",\"petId\":77}\n", raceSession);
+        protocol.accept("{\"message\":\"ready\"}\n", raceSession);
+        protocol.accept("{\"message\":510}\n", raceSession);
+        protocol.accept("{\"message\":510}\n", raceSession);
+        protocol.accept("{\"message\":511}\n", raceSession);
+
+        await().atMost(Duration.ofSeconds(1)).untilAsserted(() -> {
+            java.util.List<JsonNode> rounds = raceConnection.messages().stream()
+                    .map(message -> {
+                        try {
+                            return json.readTree(message);
+                        } catch (tools.jackson.core.JacksonException exception) {
+                            throw new AssertionError(exception);
+                        }
+                    })
+                    .filter(message -> "round".equals(message.path("classId").asText()))
+                    .toList();
+            assertThat(rounds).hasSize(3);
+            assertThat(rounds.stream().mapToInt(message -> message.path("specials").size()).sum()).isEqualTo(1);
+            JsonNode special = rounds.stream()
+                    .filter(message -> !message.path("specials").isEmpty())
+                    .findFirst()
+                    .orElseThrow()
+                    .path("specials")
+                    .get(0);
+            assertThat(special.path("classId").asText()).isEqualTo("follower");
+            assertThat(special.path("typeId").asInt()).isEqualTo(510);
+            assertThat(special.path("affectedPets").get(0).asInt()).isEqualTo(900_000_000);
+        });
+        assertThat(storedPet.get().health()).isEqualTo(4);
     }
 
     private void assertRejected(String payload) {

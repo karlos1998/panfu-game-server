@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -147,6 +148,13 @@ public final class PetRaceProtocolService {
         private final ConcurrentHashMap<Integer, AtomicInteger> pendingBoosts = new ConcurrentHashMap<>();
         private final ConcurrentHashMap<Integer, AtomicInteger> totalBoosts = new ConcurrentHashMap<>();
         private final ConcurrentHashMap<Integer, Integer> positions = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Integer, Set<Integer>> usedSpecials = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Integer, ConcurrentLinkedQueue<Integer>> pendingSpecials = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Integer, AtomicInteger> shields = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Integer, AtomicInteger> boostBlocks = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Integer, AtomicInteger> mirrors = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Integer, AtomicInteger> sponges = new ConcurrentHashMap<>();
+        private final AtomicInteger specialSequence = new AtomicInteger();
         private volatile int winnerId;
         private volatile Disposable rounds;
 
@@ -196,7 +204,7 @@ public final class PetRaceProtocolService {
         }
 
         private void useSpecial(RaceClient client, int abilityId) {
-            if (!started.get() || finished.get() || abilityId != 501) {
+            if (!started.get() || finished.get()) {
                 return;
             }
             List<Integer> available = abilities(client.pet().abilitiesJson());
@@ -204,6 +212,22 @@ public final class PetRaceProtocolService {
                 available = List.of(501);
             }
             if (!available.contains(abilityId)) {
+                return;
+            }
+            if (abilityId != 501) {
+                if (abilityId < 502 || abilityId > 523) {
+                    return;
+                }
+                Set<Integer> used = usedSpecials.computeIfAbsent(
+                        client.pet().id(), ignored -> ConcurrentHashMap.newKeySet());
+                if (used.add(abilityId)) {
+                    pendingSpecials.computeIfAbsent(
+                                    client.pet().id(), ignored -> new ConcurrentLinkedQueue<>())
+                            .add(abilityId);
+                }
+                return;
+            }
+            if (consumeEffect(boostBlocks, client.pet().id())) {
                 return;
             }
             AtomicInteger used = totalBoosts.computeIfAbsent(client.pet().id(), ignored -> new AtomicInteger());
@@ -283,11 +307,15 @@ public final class PetRaceProtocolService {
 
         private Map<String, Object> roundPayload(int round, List<PetRacePet> racePets) {
             Map<Integer, Integer> nextPositions = new LinkedHashMap<>();
+            Map<Integer, Integer> specialDeltas = new LinkedHashMap<>();
+            List<Map<String, Object>> roundSpecials = new ArrayList<>();
+            applyPendingSpecials(round, racePets, specialDeltas, roundSpecials);
             for (PetRacePet pet : racePets) {
                 boolean currentLeader = pet.ownerId() == winnerId;
                 int boost = pendingBoosts.getOrDefault(pet.id(), new AtomicInteger()).getAndSet(0);
-                int step = (currentLeader ? 6 : 5) + boost * 3;
-                nextPositions.put(pet.id(), Math.min(108, positions.getOrDefault(pet.id(), 0) + step));
+                int step = (currentLeader ? 6 : 5) + boost * 3 + specialDeltas.getOrDefault(pet.id(), 0);
+                nextPositions.put(pet.id(), Math.max(
+                        0, Math.min(108, positions.getOrDefault(pet.id(), 0) + step)));
             }
             positions.putAll(nextPositions);
             if (round == roundCount) {
@@ -315,7 +343,123 @@ public final class PetRaceProtocolService {
                     "id", round,
                     "duration", roundInterval.toMillis() / 1000.0,
                     "movementSequences", sequences,
-                    "specials", List.of());
+                    "specials", roundSpecials);
+        }
+
+        private void applyPendingSpecials(
+                int round,
+                List<PetRacePet> racePets,
+                Map<Integer, Integer> deltas,
+                List<Map<String, Object>> roundSpecials) {
+            for (PetRacePet source : racePets) {
+                ConcurrentLinkedQueue<Integer> queue = pendingSpecials.get(source.id());
+                if (queue == null) {
+                    continue;
+                }
+                Integer abilityId;
+                while ((abilityId = queue.poll()) != null) {
+                    PetRacePet opponent = racePets.stream()
+                            .filter(candidate -> candidate.id() != source.id())
+                            .findFirst()
+                            .orElse(source);
+                    PetRacePet affected = offensiveSpecial(abilityId) ? opponent : source;
+                    int delta = specialDelta(abilityId);
+                    if (defensiveSpecial(abilityId)) {
+                        defensiveEffects(abilityId).computeIfAbsent(
+                                source.id(), ignored -> new AtomicInteger()).incrementAndGet();
+                    } else if (abilityId == 510) {
+                        boostBlocks.computeIfAbsent(affected.id(), ignored -> new AtomicInteger()).incrementAndGet();
+                    } else if (abilityId == 520) {
+                        racePets.forEach(pet -> deltas.merge(pet.id(), -4, Integer::sum));
+                    } else if (abilityId == 518) {
+                        deltas.merge(source.id(), 2, Integer::sum);
+                        deltas.merge(opponent.id(), -2, Integer::sum);
+                    } else if (abilityId == 519) {
+                        deltas.merge(source.id(), 3, Integer::sum);
+                        deltas.merge(opponent.id(), -3, Integer::sum);
+                    } else if (offensiveSpecial(abilityId)
+                            && consumeEffect(mirrors, affected.id())) {
+                        deltas.merge(source.id(), delta, Integer::sum);
+                    } else if (offensiveSpecial(abilityId)
+                            && consumeEffect(sponges, affected.id())) {
+                        deltas.merge(affected.id(), 2, Integer::sum);
+                    } else if (offensiveSpecial(abilityId)
+                            && consumeEffect(shields, affected.id())) {
+                        // The counterspell absorbs this effect.
+                    } else {
+                        deltas.merge(affected.id(), delta, Integer::sum);
+                    }
+                    roundSpecials.add(specialPayload(abilityId, round, affected));
+                }
+            }
+        }
+
+        private boolean consumeEffect(ConcurrentHashMap<Integer, AtomicInteger> effects, int petId) {
+            AtomicInteger effect = effects.get(petId);
+            if (effect == null) {
+                return false;
+            }
+            while (true) {
+                int current = effect.get();
+                if (current <= 0) {
+                    return false;
+                }
+                if (effect.compareAndSet(current, current - 1)) {
+                    return true;
+                }
+            }
+        }
+
+        private ConcurrentHashMap<Integer, AtomicInteger> defensiveEffects(int abilityId) {
+            return switch (abilityId) {
+                case 521 -> sponges;
+                case 522 -> mirrors;
+                default -> shields;
+            };
+        }
+
+        private Map<String, Object> specialPayload(int abilityId, int round, PetRacePet affected) {
+            int id = Math.floorMod(
+                    match.ticket() * 1_000 + specialSequence.incrementAndGet(), Integer.MAX_VALUE);
+            if (Set.of(502, 505, 511, 523).contains(abilityId)) {
+                return Map.of(
+                        "classId", "obstacle",
+                        "id", id,
+                        "typeId", abilityId,
+                        "activeUntil", round + 1,
+                        "position", Math.min(108, positions.getOrDefault(affected.id(), 0) + 4),
+                        "affectedPets", List.of(affected.id()));
+            }
+            if (abilityId == 516) {
+                return Map.of(
+                        "classId", "teleport",
+                        "affectedPets", List.of(affected.id()));
+            }
+            return Map.of(
+                    "classId", "follower",
+                    "id", id,
+                    "typeId", abilityId,
+                    "activeUntil", round + 1,
+                    "affectedPets", List.of(affected.id()));
+        }
+
+        private boolean offensiveSpecial(int abilityId) {
+            return Set.of(502, 504, 505, 507, 508, 510, 511, 513, 515, 523).contains(abilityId);
+        }
+
+        private boolean defensiveSpecial(int abilityId) {
+            return Set.of(517, 521, 522).contains(abilityId);
+        }
+
+        private int specialDelta(int abilityId) {
+            if (offensiveSpecial(abilityId) && abilityId != 510) {
+                return -3;
+            }
+            return switch (abilityId) {
+                case 506, 509, 512, 516, 519 -> 4;
+                case 503, 514, 518 -> 2;
+                default -> 0;
+            };
         }
 
         private Map<String, Object> resultPayload(PetRacePet pet, boolean winner, boolean levelIncreased) {
