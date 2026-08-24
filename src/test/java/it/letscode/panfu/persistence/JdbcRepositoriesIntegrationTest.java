@@ -197,7 +197,7 @@ class JdbcRepositoriesIntegrationTest {
 
     @Test
     void loadsThePetRaceSnapshotFromTheLegacyPokopetTable() {
-        JdbcPetRacePetRepository pets = new JdbcPetRacePetRepository(jdbc);
+        JdbcPetRacePetRepository pets = new JdbcPetRacePetRepository(jdbc, new tools.jackson.databind.ObjectMapper());
 
         assertThat(pets.find(77)).hasValueSatisfying(pet -> {
             assertThat(pet.ownerId()).isEqualTo(7);
@@ -208,10 +208,11 @@ class JdbcRepositoriesIntegrationTest {
         });
         assertThat(pets.find(999)).isEmpty();
 
-        assertThat(pets.applyRaceResult(77, 999, 20)).isEmpty();
-        assertThat(pets.applyRaceResult(77, 7, 20)).hasValueSatisfying(pet -> {
-            assertThat(pet.health()).isEqualTo(4);
+        assertThat(pets.applyRaceResult(77, 999, 20, 0)).isEmpty();
+        assertThat(pets.applyRaceResult(77, 7, 20, 1)).hasValueSatisfying(pet -> {
+            assertThat(pet.health()).isEqualTo(3);
             assertThat(pet.experience()).isEqualTo(60);
+            assertThat(pet.level()).isEqualTo(2);
         });
     }
 }

@@ -5,6 +5,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import it.letscode.panfu.persistence.petrace.PetRacePet;
 import it.letscode.panfu.persistence.petrace.PetRacePetRepository;
+import it.letscode.panfu.persistence.petrace.PetRaceProgression;
 import it.letscode.panfu.session.PlayerSession;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,6 +108,11 @@ public final class PetRaceProtocolService {
                 if (runtime != null) {
                     runtime.ready(existing);
                 }
+            } else if (payload.path("message").canConvertToInt()) {
+                RaceRuntime runtime = runtimes.get(existing.ticket());
+                if (runtime != null) {
+                    runtime.useSpecial(existing, payload.path("message").asInt());
+                }
             }
         } catch (JacksonException exception) {
             log.warn("Rejected malformed pet race payload connectionId={}", session.connection().id());
@@ -137,6 +144,9 @@ public final class PetRaceProtocolService {
         private final AtomicBoolean setupSent = new AtomicBoolean();
         private final AtomicBoolean started = new AtomicBoolean();
         private final AtomicBoolean finished = new AtomicBoolean();
+        private final ConcurrentHashMap<Integer, AtomicInteger> pendingBoosts = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Integer, AtomicInteger> totalBoosts = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Integer, Integer> positions = new ConcurrentHashMap<>();
         private volatile int winnerId;
         private volatile Disposable rounds;
 
@@ -185,6 +195,31 @@ public final class PetRaceProtocolService {
             }
         }
 
+        private void useSpecial(RaceClient client, int abilityId) {
+            if (!started.get() || finished.get() || abilityId != 501) {
+                return;
+            }
+            List<Integer> available = abilities(client.pet().abilitiesJson());
+            if (available.isEmpty()) {
+                available = List.of(501);
+            }
+            if (!available.contains(abilityId)) {
+                return;
+            }
+            AtomicInteger used = totalBoosts.computeIfAbsent(client.pet().id(), ignored -> new AtomicInteger());
+            int maximum = Math.max(0, client.pet().health());
+            while (true) {
+                int current = used.get();
+                if (current >= maximum) {
+                    return;
+                }
+                if (used.compareAndSet(current, current + 1)) {
+                    pendingBoosts.computeIfAbsent(client.pet().id(), ignored -> new AtomicInteger()).incrementAndGet();
+                    return;
+                }
+            }
+        }
+
         private void startRounds() {
             List<PetRacePet> racePets = clients.values().stream()
                     .map(RaceClient::pet)
@@ -212,7 +247,8 @@ public final class PetRaceProtocolService {
                 boolean winner = client.playerId() == winnerId;
                 int experienceReward = winner ? 20 : 10;
                 PetRacePet updatedPet = pets.applyRaceResult(
-                                client.pet().id(), client.playerId(), experienceReward)
+                                client.pet().id(), client.playerId(), experienceReward,
+                                totalBoosts.getOrDefault(client.pet().id(), new AtomicInteger()).get())
                         .orElse(null);
                 if (updatedPet == null) {
                     log.error(
@@ -221,7 +257,7 @@ public final class PetRaceProtocolService {
                     client.session().disconnect("");
                     return;
                 }
-                send(client, resultPayload(updatedPet, winner));
+                send(client, resultPayload(updatedPet, winner, updatedPet.level() > client.pet().level()));
             });
             if (rounds != null) {
                 rounds.dispose();
@@ -246,10 +282,25 @@ public final class PetRaceProtocolService {
         }
 
         private Map<String, Object> roundPayload(int round, List<PetRacePet> racePets) {
+            Map<Integer, Integer> nextPositions = new LinkedHashMap<>();
+            for (PetRacePet pet : racePets) {
+                boolean currentLeader = pet.ownerId() == winnerId;
+                int boost = pendingBoosts.getOrDefault(pet.id(), new AtomicInteger()).getAndSet(0);
+                int step = (currentLeader ? 6 : 5) + boost * 3;
+                nextPositions.put(pet.id(), Math.min(108, positions.getOrDefault(pet.id(), 0) + step));
+            }
+            positions.putAll(nextPositions);
+            if (round == roundCount) {
+                winnerId = racePets.stream()
+                        .max(Comparator.<PetRacePet>comparingInt(pet -> nextPositions.getOrDefault(pet.id(), 0))
+                                .thenComparingInt(this::raceScore))
+                        .map(PetRacePet::ownerId)
+                        .orElse(0);
+            }
             List<Map<String, Object>> sequences = new ArrayList<>();
             for (PetRacePet pet : racePets) {
                 boolean winner = pet.ownerId() == winnerId;
-                int position = Math.min(108, round * (winner ? 6 : 5));
+                int position = nextPositions.getOrDefault(pet.id(), 0);
                 int type = round == roundCount ? (winner ? 4 : 5) : 1;
                 sequences.add(Map.of(
                         "classId", "movesequence",
@@ -267,9 +318,10 @@ public final class PetRaceProtocolService {
                     "specials", List.of());
         }
 
-        private Map<String, Object> resultPayload(PetRacePet pet, boolean winner) {
+        private Map<String, Object> resultPayload(PetRacePet pet, boolean winner, boolean levelIncreased) {
             Map<String, Object> updatedPet = new LinkedHashMap<>(petPayload(pet));
             updatedPet.put("isWinner", winner);
+            updatedPet.put("isLevelIncreased", levelIncreased);
             return Map.of(
                     "classId", "raceresults",
                     "roundsCount", roundCount,
@@ -310,9 +362,9 @@ public final class PetRaceProtocolService {
                 Map.entry("power", pet.power()),
                 Map.entry("experience", pet.experience()),
                 Map.entry("level", pet.level()),
-                Map.entry("abilities", abilities(pet.abilitiesJson())),
-                Map.entry("percentToNextLevel", 0),
-                Map.entry("pointsForNextLevel", 100),
+                Map.entry("abilities", normalizedAbilities(pet.abilitiesJson())),
+                Map.entry("percentToNextLevel", PetRaceProgression.percentToNextLevel(pet.experience(), pet.level())),
+                Map.entry("pointsForNextLevel", PetRaceProgression.pointsForNextLevel(pet.level())),
                 Map.entry("isLevelIncreased", false),
                 Map.entry("isWinner", false));
     }
@@ -336,6 +388,11 @@ public final class PetRaceProtocolService {
         } catch (JacksonException ignored) {
             return List.of();
         }
+    }
+
+    private List<Integer> normalizedAbilities(String value) {
+        List<Integer> parsed = abilities(value);
+        return parsed.isEmpty() ? List.of(501) : parsed;
     }
 
     private void send(RaceClient client, Map<String, Object> payload) {

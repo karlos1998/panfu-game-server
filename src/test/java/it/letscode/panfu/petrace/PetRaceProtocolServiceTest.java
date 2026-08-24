@@ -6,6 +6,7 @@ import static org.awaitility.Awaitility.await;
 
 import it.letscode.panfu.persistence.petrace.PetRacePet;
 import it.letscode.panfu.persistence.petrace.PetRacePetRepository;
+import it.letscode.panfu.persistence.petrace.PetRaceProgression;
 import it.letscode.panfu.protocol.PacketCodec;
 import it.letscode.panfu.session.PlayerSession;
 import it.letscode.panfu.session.SessionRegistry;
@@ -24,7 +25,7 @@ class PetRaceProtocolServiceTest {
     private final ObjectMapper json = new ObjectMapper();
     private final SessionRegistry sessions = new SessionRegistry();
     private final PetRaceMatchmakingService matchmaking = new PetRaceMatchmakingService(sessions);
-    private final PetRacePet pet = new PetRacePet(77, 11, 2, "Bambus", true, 5, 3, 2, 1, 40, 2, "[101]");
+    private final PetRacePet pet = new PetRacePet(77, 11, 2, "Bambus", true, 5, 3, 2, 1, 40, 2, "[501]");
     private final AtomicReference<PetRacePet> storedPet = new AtomicReference<>(pet);
     private final AtomicInteger appliedResults = new AtomicInteger();
     private final PetRacePetRepository pets = new PetRacePetRepository() {
@@ -34,15 +35,20 @@ class PetRaceProtocolServiceTest {
         }
 
         @Override
-        public Optional<PetRacePet> applyRaceResult(int petId, int ownerId, int experienceReward) {
+        public Optional<PetRacePet> applyRaceResult(int petId, int ownerId, int experienceReward, int boostUses) {
             if (petId != pet.id() || ownerId != pet.ownerId()) {
                 return Optional.empty();
             }
             appliedResults.incrementAndGet();
-            return Optional.of(storedPet.updateAndGet(current -> new PetRacePet(
-                    current.id(), current.ownerId(), current.type(), current.name(), current.selected(),
-                    Math.max(0, current.health() - 1), current.speed(), current.agility(), current.power(),
-                    current.experience() + experienceReward, current.level(), current.abilitiesJson())));
+            return Optional.of(storedPet.updateAndGet(current -> {
+                PetRaceProgression.Result result = PetRaceProgression.apply(
+                        current, experienceReward, boostUses, java.util.List.of(501));
+                PetRacePet updated = result.pet();
+                return new PetRacePet(
+                        updated.id(), updated.ownerId(), updated.type(), updated.name(), updated.selected(),
+                        updated.health(), updated.speed(), updated.agility(), updated.power(),
+                        updated.experience(), updated.level(), json.writeValueAsString(result.abilities()));
+            }));
         }
     };
     private PetRaceProtocolService protocol;
@@ -111,7 +117,7 @@ class PetRaceProtocolServiceTest {
             }
 
             @Override
-            public Optional<PetRacePet> applyRaceResult(int petId, int ownerId, int experienceReward) {
+            public Optional<PetRacePet> applyRaceResult(int petId, int ownerId, int experienceReward, int boostUses) {
                 return Optional.empty();
             }
         };
@@ -129,6 +135,27 @@ class PetRaceProtocolServiceTest {
         protocol.disconnected(raceSession);
 
         assertThat(matchmaking.findMatch(ticket)).isEmpty();
+    }
+
+    @Test
+    void appliesOwnedBoostsAndReturnsLevelUpMetadata() throws Exception {
+        storedPet.set(new PetRacePet(77, 11, 2, "Bambus", true, 5, 1, 1, 1, 90, 2, "[501]"));
+        protocol.accept("{\"id\":" + ticket + ",\"petId\":77}\n", raceSession);
+        protocol.accept("{\"message\":\"ready\"}\n", raceSession);
+        protocol.accept("{\"message\":501}\n", raceSession);
+        protocol.accept("{\"message\":999}\n", raceSession);
+
+        await().atMost(Duration.ofSeconds(1)).untilAsserted(() -> {
+            JsonNode result = json.readTree(raceConnection.messages().getLast());
+            assertThat(result.path("classId").asText()).isEqualTo("raceresults");
+            JsonNode updated = result.path("pet");
+            assertThat(updated.path("health").asInt()).isEqualTo(3);
+            assertThat(updated.path("level").asInt()).isEqualTo(3);
+            assertThat(updated.path("pointsForNextLevel").asInt()).isEqualTo(150);
+            assertThat(updated.path("percentToNextLevel").asInt()).isEqualTo(100);
+            assertThat(updated.path("isLevelIncreased").asBoolean()).isTrue();
+            assertThat(updated.path("abilities").size()).isEqualTo(2);
+        });
     }
 
     private void assertRejected(String payload) {

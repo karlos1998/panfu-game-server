@@ -6,5 +6,5 @@ public interface PetRacePetRepository {
 
     Optional<PetRacePet> find(int petId);
 
-    Optional<PetRacePet> applyRaceResult(int petId, int ownerId, int experienceReward);
+    Optional<PetRacePet> applyRaceResult(int petId, int ownerId, int experienceReward, int boostUses);
 }
