@@ -66,6 +66,22 @@ class AuthenticationCommandHandlerTest {
         assertThat(connection.closed).isTrue();
     }
 
+    @Test
+    void acknowledgesExplicitLogoutBeforeClosingTheTransport() {
+        FakePlayers players = new FakePlayers(Optional.empty());
+        SessionRegistry registry = new SessionRegistry();
+        SessionLifecycleService lifecycle = new SessionLifecycleService(
+                registry, new AudienceService(registry), players, (id, count) -> {}, properties);
+        AuthenticationCommandHandler handler = new AuthenticationCommandHandler(players, lifecycle);
+        RecordingConnection connection = new RecordingConnection();
+        PlayerSession session = new PlayerSession(connection, codec);
+
+        handler.handle(new IncomingPacket(PacketHeaders.LOGOUT, List.of()), session);
+
+        assertThat(connection.messages).containsExactly("3|");
+        assertThat(connection.closed).isTrue();
+    }
+
     private static final class FakePlayers implements PlayerAccountRepository {
         private final Optional<PlayerAccount> result;
         private int onlineServer = -1;

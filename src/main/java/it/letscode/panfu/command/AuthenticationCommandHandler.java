@@ -30,7 +30,7 @@ public final class AuthenticationCommandHandler implements CommandHandler {
 
     @Override
     public Set<Integer> headers() {
-        return Set.of(PacketHeaders.LOGIN, PacketHeaders.GET_SALT);
+        return Set.of(PacketHeaders.LOGIN, PacketHeaders.LOGOUT, PacketHeaders.GET_SALT);
     }
 
     @Override
@@ -42,6 +42,11 @@ public final class AuthenticationCommandHandler implements CommandHandler {
     public void handle(IncomingPacket packet, PlayerSession session) {
         if (packet.header() == PacketHeaders.GET_SALT) {
             session.send(OutgoingPacket.header(PacketHeaders.SALT).writeString(LEGACY_SALT));
+            return;
+        }
+        if (packet.header() == PacketHeaders.LOGOUT) {
+            session.send(OutgoingPacket.header(PacketHeaders.LOGOUT_SUCCESS));
+            session.disconnect("");
             return;
         }
         login(packet.reader(), session);

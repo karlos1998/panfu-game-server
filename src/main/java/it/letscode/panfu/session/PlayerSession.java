@@ -43,6 +43,7 @@ public final class PlayerSession {
     private volatile AvatarSnapshot avatarSnapshot;
     private volatile AvatarUpdateSnapshot avatarUpdateSnapshot;
     private volatile SharedItemAction sharedItemAction;
+    private volatile boolean invincible;
 
     public PlayerSession(ClientConnection connection, PacketCodec codec) {
         this.connection = Objects.requireNonNull(connection);
@@ -285,6 +286,8 @@ public final class PlayerSession {
     public void lastActionAt(long value) { this.lastActionAt = value; }
     public String lastAction() { return lastAction; }
     public void lastAction(String value) { this.lastAction = value; }
+    public boolean invincible() { return invincible; }
+    public void toggleInvincible() { this.invincible = !this.invincible; }
 
     public record AvatarSnapshot(int x, int y, String action, int rotation, String petType, String clothes) {}
 

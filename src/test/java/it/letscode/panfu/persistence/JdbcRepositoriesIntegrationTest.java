@@ -8,6 +8,7 @@ import it.letscode.panfu.persistence.chat.JdbcChatMessageRepository;
 import it.letscode.panfu.persistence.player.JdbcPlayerAccountRepository;
 import it.letscode.panfu.persistence.reward.JdbcRewardLedgerRepository;
 import it.letscode.panfu.persistence.server.JdbcGameServerStatusRepository;
+import it.letscode.panfu.persistence.social.JdbcLegacySocialRepository;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
@@ -83,6 +84,15 @@ class JdbcRepositoriesIntegrationTest {
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """);
+        template.execute("""
+                CREATE TABLE player_profiles (
+                    user_id BIGINT PRIMARY KEY,
+                    motto VARCHAR(160) NOT NULL DEFAULT '',
+                    motto_checked BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMP NULL,
+                    updated_at TIMESTAMP NULL
+                )
+                """);
         template.update("INSERT INTO users (id, name, ticket_id, coins) VALUES (7, 'Panda', '123456789', 10)");
         template.update("INSERT INTO gameservers (id, player_count) VALUES (1, 0)");
         template.update("""
@@ -146,5 +156,20 @@ class JdbcRepositoriesIntegrationTest {
                         """)
                 .query(String.class)
                 .single()).isEqualTo("7|Panda|13|0|Hello Castle");
+    }
+
+    @Test
+    void atomicallyChargesEcardsAndUpsertsProfileFields() {
+        JdbcLegacySocialRepository social = new JdbcLegacySocialRepository(jdbc);
+        jdbc.sql("UPDATE users SET coins = 20 WHERE id = 7").update();
+
+        assertThat(social.debitCoins(7, 10)).isTrue();
+        assertThat(social.debitCoins(7, 11)).isFalse();
+        social.updateProfileField(7, "motto", "Kocham Panfu");
+        social.updateProfileField(7, "motto", "Jeszcze bardziej");
+
+        assertThat(jdbc.sql("SELECT coins FROM users WHERE id = 7").query(Integer.class).single()).isEqualTo(10);
+        assertThat(jdbc.sql("SELECT motto FROM player_profiles WHERE user_id = 7")
+                .query(String.class).single()).isEqualTo("Jeszcze bardziej");
     }
 }
