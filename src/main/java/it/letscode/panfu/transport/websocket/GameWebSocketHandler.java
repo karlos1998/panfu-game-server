@@ -48,9 +48,9 @@ public final class GameWebSocketHandler implements WebSocketHandler {
         Mono<Void> send = webSocket.send(connection.outbound().map(payload ->
                 webSocket.binaryMessage(factory -> factory.wrap(payload.getBytes(StandardCharsets.UTF_8)))));
         Mono<Void> receive = webSocket.receive()
+                .timeout(idleTimeout)
                 .map(WebSocketMessage::getPayloadAsText)
                 .concatMap(chunk -> pipeline.accept(chunk, frames, player))
-                .timeout(idleTimeout)
                 .then()
                 .doFinally(signal -> connection.close());
 

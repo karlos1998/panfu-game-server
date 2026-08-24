@@ -61,8 +61,8 @@ public final class LegacyTcpServer implements SmartLifecycle {
                     Mono<Void> send = outbound.sendString(connection.outbound(), StandardCharsets.UTF_8).then();
                     Mono<Void> receive = inbound.receive()
                             .asString(StandardCharsets.UTF_8)
-                            .concatMap(chunk -> pipeline.accept(chunk, frames, player))
                             .timeout(idleTimeout)
+                            .concatMap(chunk -> pipeline.accept(chunk, frames, player))
                             .then()
                             .doFinally(signal -> connection.close());
                     return Mono.when(send, receive)

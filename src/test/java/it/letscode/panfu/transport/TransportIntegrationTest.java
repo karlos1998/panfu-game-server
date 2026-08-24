@@ -17,6 +17,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.reactive.socket.client.ReactorNettyWebSocketClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.tcp.TcpClient;
 
@@ -25,6 +26,7 @@ import reactor.netty.tcp.TcpClient;
         properties = {
             "panfu.game-server.network.legacy-tcp-port=0",
             "panfu.game-server.security.allowed-origins=http://localhost",
+            "panfu.game-server.limits.idle-timeout=500ms",
             "management.health.db.enabled=false",
             "management.health.redis.enabled=false"
         })
@@ -79,5 +81,31 @@ class TransportIntegrationTest {
         String expected = "301;P4nfu8Ri5$3*m/#4nt1Ch34t2gHTu.%ru1{<0?K_&45fS4lt6,]-lO5=+354y|";
         assertThat(websocketResponse.get()).isEqualTo(expected);
         assertThat(tcpResponse.get()).isEqualTo(expected);
+    }
+
+    @Test
+    void websocketTrafficResetsIdleTimeoutWhenCommandsDoNotEmitResponses() {
+        AtomicReference<String> response = new AtomicReference<>();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setOrigin("http://localhost");
+
+        new ReactorNettyWebSocketClient().execute(
+                        URI.create("ws://127.0.0.1:" + httpPort + "/game"),
+                        headers,
+                        session -> Mono.when(
+                                session.send(Flux.interval(Duration.ZERO, Duration.ofMillis(100))
+                                        .take(8)
+                                        .map(tick -> tick < 7 ? "1050|" : "301|")
+                                        .map(payload -> session.binaryMessage(factory ->
+                                                factory.wrap(payload.getBytes(StandardCharsets.UTF_8))))),
+                                session.receive()
+                                        .next()
+                                        .doOnNext(message -> response.set(message.getPayloadAsText()))
+                                        .then()))
+                .timeout(Duration.ofSeconds(5))
+                .block();
+
+        assertThat(response.get())
+                .isEqualTo("301;P4nfu8Ri5$3*m/#4nt1Ch34t2gHTu.%ru1{<0?K_&45fS4lt6,]-lO5=+354y|");
     }
 }
