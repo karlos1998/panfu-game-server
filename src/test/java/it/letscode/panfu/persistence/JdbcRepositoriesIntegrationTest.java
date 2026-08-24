@@ -6,6 +6,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import it.letscode.panfu.persistence.chat.JdbcChatMessageRepository;
 import it.letscode.panfu.persistence.player.JdbcPlayerAccountRepository;
+import it.letscode.panfu.persistence.petrace.JdbcPetRacePetRepository;
 import it.letscode.panfu.persistence.reward.JdbcRewardLedgerRepository;
 import it.letscode.panfu.persistence.server.JdbcGameServerStatusRepository;
 import it.letscode.panfu.persistence.social.JdbcLegacySocialRepository;
@@ -93,8 +94,29 @@ class JdbcRepositoriesIntegrationTest {
                     updated_at TIMESTAMP NULL
                 )
                 """);
+        template.execute("""
+                CREATE TABLE pokopets (
+                    id BIGINT PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    type INT NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    selected BOOLEAN NOT NULL DEFAULT FALSE,
+                    health INT NOT NULL,
+                    speed INT NOT NULL,
+                    agility INT NOT NULL,
+                    power INT NOT NULL,
+                    experience INT NOT NULL,
+                    level INT NOT NULL,
+                    abilities JSON NULL
+                )
+                """);
         template.update("INSERT INTO users (id, name, ticket_id, coins) VALUES (7, 'Panda', '123456789', 10)");
         template.update("INSERT INTO gameservers (id, player_count) VALUES (1, 0)");
+        template.update("""
+                INSERT INTO pokopets
+                    (id, user_id, type, name, selected, health, speed, agility, power, experience, level, abilities)
+                VALUES (77, 7, 2, 'Bambus', true, 5, 3, 2, 1, 40, 2, '[101]')
+                """);
         template.update("""
                 INSERT INTO minigame_rewards (game_id, enabled, coin_multiplier, max_coins_per_round)
                 VALUES (5, true, 0.1000, 50)
@@ -171,5 +193,25 @@ class JdbcRepositoriesIntegrationTest {
         assertThat(jdbc.sql("SELECT coins FROM users WHERE id = 7").query(Integer.class).single()).isEqualTo(10);
         assertThat(jdbc.sql("SELECT motto FROM player_profiles WHERE user_id = 7")
                 .query(String.class).single()).isEqualTo("Jeszcze bardziej");
+    }
+
+    @Test
+    void loadsThePetRaceSnapshotFromTheLegacyPokopetTable() {
+        JdbcPetRacePetRepository pets = new JdbcPetRacePetRepository(jdbc);
+
+        assertThat(pets.find(77)).hasValueSatisfying(pet -> {
+            assertThat(pet.ownerId()).isEqualTo(7);
+            assertThat(pet.name()).isEqualTo("Bambus");
+            assertThat(pet.selected()).isTrue();
+            assertThat(pet.health()).isEqualTo(5);
+            assertThat(pet.abilitiesJson()).isEqualTo("[101]");
+        });
+        assertThat(pets.find(999)).isEmpty();
+
+        assertThat(pets.applyRaceResult(77, 999, 20)).isEmpty();
+        assertThat(pets.applyRaceResult(77, 7, 20)).hasValueSatisfying(pet -> {
+            assertThat(pet.health()).isEqualTo(4);
+            assertThat(pet.experience()).isEqualTo(60);
+        });
     }
 }

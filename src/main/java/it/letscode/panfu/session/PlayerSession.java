@@ -44,6 +44,8 @@ public final class PlayerSession {
     private volatile AvatarUpdateSnapshot avatarUpdateSnapshot;
     private volatile SharedItemAction sharedItemAction;
     private volatile boolean invincible;
+    private volatile boolean protocolSelected;
+    private volatile boolean raceProtocol;
 
     public PlayerSession(ClientConnection connection, PacketCodec codec) {
         this.connection = Objects.requireNonNull(connection);
@@ -288,6 +290,15 @@ public final class PlayerSession {
     public void lastAction(String value) { this.lastAction = value; }
     public boolean invincible() { return invincible; }
     public void toggleInvincible() { this.invincible = !this.invincible; }
+    public boolean protocolSelected() { return protocolSelected; }
+    public boolean raceProtocol() { return raceProtocol; }
+    public synchronized void selectProtocol(boolean race) {
+        if (protocolSelected && raceProtocol != race) {
+            throw new IllegalStateException("Connection protocol is already selected");
+        }
+        this.raceProtocol = race;
+        this.protocolSelected = true;
+    }
 
     public record AvatarSnapshot(int x, int y, String action, int rotation, String petType, String clothes) {}
 

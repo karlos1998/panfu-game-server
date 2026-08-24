@@ -4,6 +4,7 @@ import it.letscode.panfu.command.CommandDispatcher;
 import it.letscode.panfu.config.GameServerProperties;
 import it.letscode.panfu.protocol.IncomingPacket;
 import it.letscode.panfu.protocol.PacketCodec;
+import it.letscode.panfu.petrace.PetRaceProtocolService;
 import it.letscode.panfu.session.PlayerSession;
 import it.letscode.panfu.session.SessionLifecycleService;
 import java.util.List;
@@ -17,16 +18,19 @@ public final class TransportPipeline {
     private final PacketCodec codec;
     private final CommandDispatcher dispatcher;
     private final SessionLifecycleService lifecycle;
+    private final PetRaceProtocolService petRaces;
     private final int maxFrameBytes;
 
     public TransportPipeline(
             PacketCodec codec,
             CommandDispatcher dispatcher,
             SessionLifecycleService lifecycle,
+            PetRaceProtocolService petRaces,
             GameServerProperties properties) {
         this.codec = codec;
         this.dispatcher = dispatcher;
         this.lifecycle = lifecycle;
+        this.petRaces = petRaces;
         this.maxFrameBytes = properties.limits().maxFrameBytes();
     }
 
@@ -39,6 +43,15 @@ public final class TransportPipeline {
     }
 
     public Flux<Void> accept(String chunk, FrameAccumulator accumulator, PlayerSession session) {
+        if (!session.protocolSelected()) {
+            session.selectProtocol(chunk.stripLeading().startsWith("{"));
+        }
+        if (session.raceProtocol()) {
+            return Flux.defer(() -> {
+                petRaces.accept(chunk, session);
+                return Flux.empty();
+            });
+        }
         List<String> frames = accumulator.append(chunk);
         return Flux.fromIterable(frames)
                 .concatMap(frame -> Flux.fromIterable(codec.decodeCompleteFrames(frame)))
@@ -46,6 +59,7 @@ public final class TransportPipeline {
     }
 
     public void disconnected(PlayerSession session) {
+        petRaces.disconnected(session);
         lifecycle.disconnect(session);
     }
 }

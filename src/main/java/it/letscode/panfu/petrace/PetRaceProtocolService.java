@@ -1,0 +1,350 @@
+package it.letscode.panfu.petrace;
+
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import it.letscode.panfu.persistence.petrace.PetRacePet;
+import it.letscode.panfu.persistence.petrace.PetRacePetRepository;
+import it.letscode.panfu.session.PlayerSession;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import reactor.core.Disposable;
+import reactor.core.publisher.Flux;
+
+@Service
+public final class PetRaceProtocolService {
+
+    private static final Logger log = LoggerFactory.getLogger(PetRaceProtocolService.class);
+    private static final int MAX_FRAME_LENGTH = 8_192;
+    private static final int DEFAULT_ROUND_COUNT = 18;
+    private static final Duration DEFAULT_ROUND_INTERVAL = Duration.ofMillis(850);
+    private static final Duration DEFAULT_START_DELAY = Duration.ofMillis(250);
+
+    private final PetRaceMatchmakingService matchmaking;
+    private final PetRacePetRepository pets;
+    private final ObjectMapper json;
+    private final int roundCount;
+    private final Duration roundInterval;
+    private final Duration startDelay;
+    private final ConcurrentHashMap<String, StringBuilder> buffers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, RaceClient> clientsByConnection = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, RaceRuntime> runtimes = new ConcurrentHashMap<>();
+
+    @Autowired
+    public PetRaceProtocolService(
+            PetRaceMatchmakingService matchmaking,
+            PetRacePetRepository pets,
+            ObjectMapper json) {
+        this(matchmaking, pets, json, DEFAULT_ROUND_COUNT, DEFAULT_ROUND_INTERVAL, DEFAULT_START_DELAY);
+    }
+
+    PetRaceProtocolService(
+            PetRaceMatchmakingService matchmaking,
+            PetRacePetRepository pets,
+            ObjectMapper json,
+            int roundCount,
+            Duration roundInterval,
+            Duration startDelay) {
+        this.matchmaking = matchmaking;
+        this.pets = pets;
+        this.json = json;
+        this.roundCount = roundCount;
+        this.roundInterval = roundInterval;
+        this.startDelay = startDelay;
+    }
+
+    public void accept(String chunk, PlayerSession session) {
+        StringBuilder buffer = buffers.computeIfAbsent(session.connection().id(), ignored -> new StringBuilder());
+        buffer.append(chunk);
+        if (buffer.length() > MAX_FRAME_LENGTH) {
+            session.disconnect("");
+            return;
+        }
+        int newline;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+            String frame = buffer.substring(0, newline).strip();
+            buffer.delete(0, newline + 1);
+            if (!frame.isBlank()) {
+                handleFrame(frame, session);
+            }
+        }
+    }
+
+    public void disconnected(PlayerSession session) {
+        String connectionId = session.connection().id();
+        buffers.remove(connectionId);
+        RaceClient client = clientsByConnection.remove(connectionId);
+        if (client != null) {
+            RaceRuntime runtime = runtimes.get(client.ticket());
+            if (runtime != null) {
+                runtime.remove(connectionId);
+            }
+        }
+    }
+
+    private void handleFrame(String frame, PlayerSession session) {
+        try {
+            JsonNode payload = json.readTree(frame);
+            RaceClient existing = clientsByConnection.get(session.connection().id());
+            if (existing == null) {
+                authenticate(payload, session);
+                return;
+            }
+            if ("ready".equals(payload.path("message").asText())) {
+                RaceRuntime runtime = runtimes.get(existing.ticket());
+                if (runtime != null) {
+                    runtime.ready(existing);
+                }
+            }
+        } catch (JacksonException exception) {
+            log.warn("Rejected malformed pet race payload connectionId={}", session.connection().id());
+            session.disconnect("");
+        }
+    }
+
+    private void authenticate(JsonNode payload, PlayerSession session) {
+        int ticket = payload.path("id").asInt(-1);
+        int petId = payload.path("petId").asInt(-1);
+        PetRaceMatch match = matchmaking.findMatch(ticket).orElse(null);
+        PetRacePet pet = pets.find(petId).orElse(null);
+        if (match == null || pet == null || !pet.selected() || pet.health() <= 0 || !match.hasPlayer(pet.ownerId())) {
+            session.disconnect("");
+            return;
+        }
+
+        RaceClient client = new RaceClient(ticket, pet.ownerId(), pet, session);
+        clientsByConnection.put(session.connection().id(), client);
+        RaceRuntime runtime = runtimes.computeIfAbsent(ticket, ignored -> new RaceRuntime(match));
+        runtime.register(client);
+        log.info("Pet race client authenticated ticket={} playerId={} petId={}", ticket, pet.ownerId(), pet.id());
+    }
+
+    private final class RaceRuntime {
+        private final PetRaceMatch match;
+        private final ConcurrentHashMap<Integer, RaceClient> clients = new ConcurrentHashMap<>();
+        private final Set<Integer> readyPlayers = ConcurrentHashMap.newKeySet();
+        private final AtomicBoolean setupSent = new AtomicBoolean();
+        private final AtomicBoolean started = new AtomicBoolean();
+        private final AtomicBoolean finished = new AtomicBoolean();
+        private volatile int winnerId;
+        private volatile Disposable rounds;
+
+        private RaceRuntime(PetRaceMatch match) {
+            this.match = match;
+        }
+
+        private void register(RaceClient client) {
+            RaceClient previous = clients.putIfAbsent(client.playerId(), client);
+            if (previous != null) {
+                client.session().disconnect("");
+                return;
+            }
+            int expected = (int) match.playerIds().stream().filter(id -> id > 0).count();
+            if (clients.size() == expected && setupSent.compareAndSet(false, true)) {
+                sendSetup();
+            }
+        }
+
+        private void sendSetup() {
+            List<PetRacePet> racePets = clients.values().stream()
+                    .map(RaceClient::pet)
+                    .sorted(Comparator.comparingInt(PetRacePet::ownerId))
+                    .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+            if (match.hasBot()) {
+                racePets.add(botPet());
+            }
+            winnerId = racePets.stream()
+                    .max(Comparator.comparingInt(this::raceScore))
+                    .map(PetRacePet::ownerId)
+                    .orElse(0);
+            Map<String, Object> track = trackPayload();
+            clients.values().forEach(client -> {
+                send(client, track);
+                send(client, Map.of(
+                        "classId", "pets",
+                        "ownerId", client.pet().id(),
+                        "petsList", racePets.stream().map(PetRaceProtocolService.this::petPayload).toList()));
+            });
+        }
+
+        private void ready(RaceClient client) {
+            readyPlayers.add(client.playerId());
+            if (setupSent.get() && readyPlayers.size() == clients.size() && started.compareAndSet(false, true)) {
+                startRounds();
+            }
+        }
+
+        private void startRounds() {
+            List<PetRacePet> racePets = clients.values().stream()
+                    .map(RaceClient::pet)
+                    .sorted(Comparator.comparingInt(PetRacePet::ownerId))
+                    .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+            if (match.hasBot()) {
+                racePets.add(botPet());
+            }
+            rounds = Flux.interval(startDelay, roundInterval)
+                    .take(roundCount)
+                    .subscribe(index -> {
+                        int round = index.intValue() + 1;
+                        broadcast(roundPayload(round, racePets));
+                        if (round == roundCount) {
+                            Flux.interval(roundInterval).take(1).subscribe(ignored -> finishRace());
+                        }
+                    });
+        }
+
+        private void finishRace() {
+            if (!finished.compareAndSet(false, true)) {
+                return;
+            }
+            clients.values().forEach(client -> {
+                boolean winner = client.playerId() == winnerId;
+                int experienceReward = winner ? 20 : 10;
+                PetRacePet updatedPet = pets.applyRaceResult(
+                                client.pet().id(), client.playerId(), experienceReward)
+                        .orElse(null);
+                if (updatedPet == null) {
+                    log.error(
+                            "Could not persist pet race result ticket={} playerId={} petId={}",
+                            match.ticket(), client.playerId(), client.pet().id());
+                    client.session().disconnect("");
+                    return;
+                }
+                send(client, resultPayload(updatedPet, winner));
+            });
+            if (rounds != null) {
+                rounds.dispose();
+            }
+            runtimes.remove(match.ticket(), this);
+            matchmaking.finish(match.ticket());
+        }
+
+        private void broadcast(Map<String, Object> payload) {
+            clients.values().forEach(client -> send(client, payload));
+        }
+
+        private void remove(String connectionId) {
+            clients.entrySet().removeIf(entry -> entry.getValue().session().connection().id().equals(connectionId));
+            if (clients.isEmpty()) {
+                if (rounds != null) {
+                    rounds.dispose();
+                }
+                runtimes.remove(match.ticket(), this);
+                matchmaking.finish(match.ticket());
+            }
+        }
+
+        private Map<String, Object> roundPayload(int round, List<PetRacePet> racePets) {
+            List<Map<String, Object>> sequences = new ArrayList<>();
+            for (PetRacePet pet : racePets) {
+                boolean winner = pet.ownerId() == winnerId;
+                int position = Math.min(108, round * (winner ? 6 : 5));
+                int type = round == roundCount ? (winner ? 4 : 5) : 1;
+                sequences.add(Map.of(
+                        "classId", "movesequence",
+                        "petId", pet.id(),
+                        "movements", List.of(Map.of(
+                                "classId", "move",
+                                "position", position,
+                                "typeId", type))));
+            }
+            return Map.of(
+                    "classId", "round",
+                    "id", round,
+                    "duration", roundInterval.toMillis() / 1000.0,
+                    "movementSequences", sequences,
+                    "specials", List.of());
+        }
+
+        private Map<String, Object> resultPayload(PetRacePet pet, boolean winner) {
+            Map<String, Object> updatedPet = new LinkedHashMap<>(petPayload(pet));
+            updatedPet.put("isWinner", winner);
+            return Map.of(
+                    "classId", "raceresults",
+                    "roundsCount", roundCount,
+                    "isWinner", winner,
+                    "pet", updatedPet);
+        }
+
+        private int raceScore(PetRacePet pet) {
+            int stats = pet.speed() * 5 + pet.agility() * 3 + pet.power() * 2;
+            return stats * 1_000 + Math.floorMod(match.ticket() * 31 + pet.id() * 17, 1_000);
+        }
+    }
+
+    private Map<String, Object> trackPayload() {
+        List<Map<String, Object>> tiles = new ArrayList<>();
+        for (int index = 0; index < 16; index++) {
+            tiles.add(Map.of("classId", "tile", "id", "race-tile-" + index, "typeId", "2"));
+        }
+        return Map.of(
+                "classId", "track",
+                "stepsPerTile", 10,
+                "tileWidth", 720,
+                "numStartTiles", 2,
+                "numEndTiles", 4,
+                "tiles", tiles,
+                "specials", List.of());
+    }
+
+    private Map<String, Object> petPayload(PetRacePet pet) {
+        return Map.ofEntries(
+                Map.entry("classId", "pet"),
+                Map.entry("id", pet.id()),
+                Map.entry("petTypeId", Integer.toString(pet.type())),
+                Map.entry("name", pet.name()),
+                Map.entry("health", pet.health()),
+                Map.entry("speed", pet.speed()),
+                Map.entry("agility", pet.agility()),
+                Map.entry("power", pet.power()),
+                Map.entry("experience", pet.experience()),
+                Map.entry("level", pet.level()),
+                Map.entry("abilities", abilities(pet.abilitiesJson())),
+                Map.entry("percentToNextLevel", 0),
+                Map.entry("pointsForNextLevel", 100),
+                Map.entry("isLevelIncreased", false),
+                Map.entry("isWinner", false));
+    }
+
+    private PetRacePet botPet() {
+        return new PetRacePet(900_000_000, 0, 7, "Tork_42", true, 5, 2, 2, 2, 0, 1, "[]");
+    }
+
+    private List<Integer> abilities(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonNode node = json.readTree(value);
+            if (!node.isArray()) {
+                return List.of();
+            }
+            List<Integer> result = new ArrayList<>();
+            node.forEach(entry -> result.add(entry.asInt()));
+            return List.copyOf(result);
+        } catch (JacksonException ignored) {
+            return List.of();
+        }
+    }
+
+    private void send(RaceClient client, Map<String, Object> payload) {
+        try {
+            client.session().sendRaw(json.writeValueAsString(payload) + "\n");
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("Could not encode pet race payload", exception);
+        }
+    }
+
+    private record RaceClient(int ticket, int playerId, PetRacePet pet, PlayerSession session) {}
+}

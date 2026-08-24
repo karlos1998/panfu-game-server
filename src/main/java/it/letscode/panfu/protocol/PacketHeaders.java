@@ -33,6 +33,12 @@ public final class PacketHeaders {
     public static final int REPORT_PLAYER = 114;
     public static final int LOCK_PLAYER = 115;
     public static final int QUERY_SHARED_ITEMS = 140;
+    public static final int PET_RACE_PRIVATE_INVITE = 200;
+    public static final int PET_RACE_PRIVATE_RESPONSE = 201;
+    public static final int PET_RACE_PRIVATE_CANCELLED = 202;
+    public static final int PET_RACE_PUBLIC_MATCHMAKING = 203;
+    public static final int PET_RACE_PUBLIC_BOT = 204;
+    public static final int PET_RACE_PUBLIC_CANCELLED = 205;
     public static final int SET_PLAYER_STATUS = 210;
     public static final int GET_PLAYER_LOCATION = 211;
     public static final int GET_PLAYER_IDS_BY_CLOTHES = 212;
@@ -65,6 +71,10 @@ public final class PacketHeaders {
     public static final int PROFILE_FIELD_OK = 93;
     public static final int PLAYER_TO_PLAYER_RESPONSE = 113;
     public static final int SHARED_ITEMS = 140;
+    public static final int PET_RACE_PRIVATE_REQUEST = 200;
+    public static final int PET_RACE_RESPONSE = 201;
+    public static final int PET_RACE_INVITE_CANCELLED = 202;
+    public static final int PET_RACE_PUBLIC_MATCH_FOUND = 203;
     public static final int PLAYER_STATUS = 210;
     public static final int PLAYER_LOCATION = 211;
     public static final int PLAYER_IDS_BY_CLOTHES = 212;

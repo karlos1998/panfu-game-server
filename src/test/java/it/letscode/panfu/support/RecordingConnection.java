@@ -1,14 +1,14 @@
 package it.letscode.panfu.support;
 
 import it.letscode.panfu.transport.ClientConnection;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class RecordingConnection implements ClientConnection {
 
     private final String id;
-    private final List<String> messages = new ArrayList<>();
-    private boolean closed;
+    private final List<String> messages = new CopyOnWriteArrayList<>();
+    private volatile boolean closed;
 
     public RecordingConnection(String id) {
         this.id = id;
