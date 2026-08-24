@@ -83,6 +83,14 @@ public final class PlayerSession {
         this.sharedItemAction = null;
     }
 
+    public synchronized void leaveRoom() {
+        this.roomId = -1;
+        this.home = false;
+        this.subRoom = 0;
+        this.interactingWith = -1;
+        this.sharedItemAction = null;
+    }
+
     public synchronized UUID startGame(int gameId) {
         this.currentGame = gameId;
         this.currentRound = UUID.randomUUID();

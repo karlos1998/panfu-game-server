@@ -30,6 +30,7 @@ public final class RoomCommandHandler implements CommandHandler {
     @Override
     public Set<Integer> headers() {
         return Set.of(
+                PacketHeaders.LEAVE_ROOM,
                 PacketHeaders.JOIN_ROOM,
                 PacketHeaders.JOIN_HOME,
                 PacketHeaders.CHANGE_HOME_ROOM,
@@ -43,6 +44,7 @@ public final class RoomCommandHandler implements CommandHandler {
     @Override
     public void handle(IncomingPacket packet, PlayerSession session) {
         switch (packet.header()) {
+            case PacketHeaders.LEAVE_ROOM -> leaveRoom(session);
             case PacketHeaders.JOIN_ROOM -> joinRoom(packet.reader(), session);
             case PacketHeaders.JOIN_HOME -> joinHome(packet.reader(), session);
             case PacketHeaders.CHANGE_HOME_ROOM -> changeHomeRoom(packet.reader(), session);
@@ -54,6 +56,11 @@ public final class RoomCommandHandler implements CommandHandler {
             case PacketHeaders.UPDATE_HOME_SOUND -> updateSound(packet.reader(), session);
             default -> throw new IllegalArgumentException("Unsupported room command");
         }
+    }
+
+    private void leaveRoom(PlayerSession session) {
+        leaveCurrentRoom(session);
+        session.leaveRoom();
     }
 
     private void joinRoom(PacketReader reader, PlayerSession session) {

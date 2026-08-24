@@ -15,6 +15,27 @@ import org.junit.jupiter.api.Test;
 class RoomAndMovementCommandHandlerTest {
 
     @Test
+    void leaveRoomRemovesTheAvatarAndSessionFromTheRoomSnapshot() {
+        SessionRegistry registry = new SessionRegistry();
+        AudienceService audience = new AudienceService(registry);
+        RoomCommandHandler rooms = new RoomCommandHandler(registry, audience);
+        RecordingConnection leavingConnection = new RecordingConnection("leaving");
+        RecordingConnection remainingConnection = new RecordingConnection("remaining");
+        PlayerSession leaving = authenticated(leavingConnection, 1, "Leaving");
+        PlayerSession remaining = authenticated(remainingConnection, 2, "Remaining");
+        leaving.joinRoom(10, 100, 100);
+        remaining.joinRoom(10, 200, 200);
+        registry.register(leaving);
+        registry.register(remaining);
+
+        rooms.handle(new IncomingPacket(PacketHeaders.LEAVE_ROOM, List.of()), leaving);
+
+        assertThat(leaving.roomId()).isEqualTo(-1);
+        assertThat(remainingConnection.messages()).contains("31;1|");
+        assertThat(registry.inRoom(remaining)).containsExactly(remaining);
+    }
+
+    @Test
     void returnsRoomSnapshotAndBroadcastsMovementWithLegacyFormat() {
         SessionRegistry registry = new SessionRegistry();
         AudienceService audience = new AudienceService(registry);
